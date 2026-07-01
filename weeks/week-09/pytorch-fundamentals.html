@@ -1,0 +1,194 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Lesson 9.4: PyTorch Fundamentals | MS Machine Learning</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="../../assets/css/styles.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css">
+</head>
+<body data-root="../../" data-page-id="week-09/lesson-9-4" data-title="Lesson 9.4: PyTorch Fundamentals">
+<a class="skip-link" href="#main">Skip to main content</a>
+<div class="progress" id="readingProgress"></div>
+<div class="mobile-topbar">
+  <button id="openSidebar">☰ Navigation</button>
+  <span style="font-family:var(--serif);font-weight:700;font-size:.95rem">MS Machine Learning</span>
+  <button class="theme-toggle">🌙 Dark mode</button>
+</div>
+<div class="site-shell">
+  <aside class="sidebar" id="sidebar" aria-label="Course navigation">
+    <div class="brand">
+      <span class="brand-mark">ML</span>
+      <div><h1>Machine Learning</h1><small>Interactive Learning Platform</small></div>
+    </div>
+    <button id="closeSidebar" class="btn" style="margin:.25rem 0">✕ Close</button>
+    <div class="nav-search">
+      <label for="navSearch">Search lessons</label>
+      <input id="navSearch" class="site-search-input" type="search" placeholder="Type to search…" autocomplete="off">
+      <div class="mini-results search-results"></div>
+    </div>
+    <nav id="courseNav" aria-label="Course weeks"></nav>
+    <section class="nav-group">
+      <div class="nav-group-title">Your Progress</div>
+      <div id="progressList" class="progress-list small"></div>
+    </section>
+  </aside>
+  <main class="main" id="main">
+    <div class="page-wrap">
+      <nav class="breadcrumbs" aria-label="Breadcrumb">
+        <a href="../../index.html">Home</a>
+        <span>Week 9 · Neural Networks</span>
+      </nav>
+      <section class="hero">
+        <div class="eyebrow">Week 9 · Neural Networks</div>
+        <h1 class="page-title">Lesson 9.4: PyTorch Fundamentals</h1>
+        <div class="toolbar">
+          <button id="bookmarkBtn" class="btn">☆ Bookmark</button>
+          <button id="completeBtn" class="btn">Mark complete</button>
+          <button id="quizModeBtn" class="btn">🎯 Start quiz mode</button>
+          <button class="print-page btn">🖨 Print</button>
+          <button class="theme-toggle btn">🌙 Dark mode</button>
+        </div>
+      </section>
+      <div class="layout-article">
+        <article class="article" id="articleBody">
+<section>
+<h2>From Neurons to Networks</h2>
+<p>A neural network is a composition of parameterised functions. Each layer transforms its input into a new representation, and by stacking many layers the network can approximate arbitrarily complex functions — a result formalised as the Universal Approximation Theorem.</p>
+<p>The perceptron, proposed by Frank Rosenblatt in 1957, is the atomic unit. It computes a weighted sum of its inputs and passes the result through an activation function:</p>
+<blockquote>y = f(w₁x₁ + w₂x₂ + … + wₙxₙ + b) = f(w·x + b)</blockquote>
+<p>where <strong>w</strong> are learnable weights, <strong>b</strong> is a learnable bias, and <strong>f</strong> is a non-linear activation function. Without a non-linearity, a stack of linear layers collapses to a single linear transformation — no matter how deep.</p>
+</section>
+<section>
+<h2>Activation Functions</h2>
+<table>
+<thead><tr><th>Function</th><th>Formula</th><th>Range</th><th>Use case</th></tr></thead>
+<tbody>
+<tr><td><strong>Sigmoid</strong></td><td>1 / (1 + e⁻ˣ)</td><td>(0, 1)</td><td>Binary output layer</td></tr>
+<tr><td><strong>Tanh</strong></td><td>(eˣ − e⁻ˣ) / (eˣ + e⁻ˣ)</td><td>(−1, 1)</td><td>Hidden layers (older nets)</td></tr>
+<tr><td><strong>ReLU</strong></td><td>max(0, x)</td><td>[0, ∞)</td><td>Hidden layers — default choice</td></tr>
+<tr><td><strong>Leaky ReLU</strong></td><td>max(0.01x, x)</td><td>(−∞, ∞)</td><td>Avoids dying ReLU problem</td></tr>
+<tr><td><strong>Softmax</strong></td><td>eˣⁱ / Σeˣʲ</td><td>(0, 1), sums to 1</td><td>Multi-class output layer</td></tr>
+</tbody>
+</table>
+<div class="callout">ReLU is preferred in hidden layers because it does not saturate for positive inputs (unlike sigmoid/tanh), which mitigates the vanishing gradient problem and speeds up training dramatically.</div>
+</section>
+<section>
+<h2>PyTorch Fundamentals</h2>
+<pre><code class="language-python">import torch
+import torch.nn as nn
+import torch.optim as optim
+
+# --- 1. Tensors ---
+x = torch.tensor([[1.0, 2.0, 3.0]])   # shape (1, 3)
+w = torch.randn(3, 2, requires_grad=True)
+b = torch.zeros(2, requires_grad=True)
+
+# Matrix multiplication + bias
+out = x @ w + b   # shape (1, 2)
+
+# --- 2. Define a model using nn.Module ---
+class MLP(nn.Module):
+    def __init__(self, input_dim, hidden_dim, output_dim):
+        super().__init__()
+        self.network = nn.Sequential(
+            nn.Linear(input_dim, hidden_dim),
+            nn.ReLU(),
+            nn.Linear(hidden_dim, hidden_dim),
+            nn.ReLU(),
+            nn.Linear(hidden_dim, output_dim)
+        )
+
+    def forward(self, x):
+        return self.network(x)
+
+model = MLP(input_dim=10, hidden_dim=64, output_dim=1)
+print(model)
+
+# --- 3. Training loop ---
+criterion = nn.MSELoss()
+optimiser = optim.Adam(model.parameters(), lr=1e-3)
+
+# Dummy data
+X_train = torch.randn(100, 10)
+y_train = torch.randn(100, 1)
+
+for epoch in range(200):
+    model.train()
+    optimiser.zero_grad()           # reset gradients
+    predictions = model(X_train)    # forward pass
+    loss = criterion(predictions, y_train)
+    loss.backward()                 # backpropagation
+    optimiser.step()                # update weights
+
+    if (epoch + 1) % 50 == 0:
+        print(f"Epoch {epoch+1}: Loss = {loss.item():.4f}")
+</code></pre>
+</section>
+<section>
+<h2>Understanding Backpropagation</h2>
+<p>Backpropagation is the algorithm that computes gradients efficiently by applying the chain rule backwards through the computation graph. PyTorch builds this graph dynamically during the forward pass via <strong>autograd</strong>.</p>
+<pre><code class="language-python"># PyTorch autograd in action
+x = torch.tensor(3.0, requires_grad=True)
+y = x ** 2 + 2 * x + 1   # y = x² + 2x + 1
+
+y.backward()   # compute dy/dx
+print(x.grad)  # dy/dx = 2x + 2 = 8.0 ✓
+</code></pre>
+<p>When you call <code>loss.backward()</code> on the final scalar loss, PyTorch traverses the computation graph in reverse and accumulates gradients into the <code>.grad</code> attribute of every leaf tensor that has <code>requires_grad=True</code>.</p>
+</section>
+<section>
+<h2>GPU Acceleration</h2>
+<pre><code class="language-python">device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+print(f"Using device: {device}")
+
+model = MLP(10, 64, 1).to(device)     # move model to GPU
+X = torch.randn(1000, 10).to(device)  # move data to GPU
+y = torch.randn(1000, 1).to(device)
+
+# Training loop is identical — PyTorch handles dispatch automatically
+</code></pre>
+</section>
+<section>
+<h2>Review Questions</h2>
+<div class="quiz-card" data-answer="C">
+  <p><strong>Q1.</strong> Why is a non-linear activation function necessary in a neural network?</p>
+  <label class="quiz-option"><input type="radio" name="q1" value="A"> To make training faster</label>
+  <label class="quiz-option"><input type="radio" name="q1" value="B"> To reduce the number of parameters</label>
+  <label class="quiz-option"><input type="radio" name="q1" value="C"> Without it, stacked linear layers collapse to a single linear transformation</label>
+  <label class="quiz-option"><input type="radio" name="q1" value="D"> To prevent overfitting</label>
+  <button class="btn check-quiz" style="margin-top:.5rem">Check answer</button>
+</div>
+<div class="quiz-card" data-answer="B">
+  <p><strong>Q2.</strong> In a PyTorch training loop, what does <code>optimiser.zero_grad()</code> do?</p>
+  <label class="quiz-option"><input type="radio" name="q2" value="A"> Resets the model weights to zero</label>
+  <label class="quiz-option"><input type="radio" name="q2" value="B"> Clears accumulated gradients from the previous step</label>
+  <label class="quiz-option"><input type="radio" name="q2" value="C"> Moves the model to CPU</label>
+  <label class="quiz-option"><input type="radio" name="q2" value="D"> Disables backpropagation</label>
+  <button class="btn check-quiz" style="margin-top:.5rem">Check answer</button>
+</div>
+</section>
+        </article>
+        <aside>
+          <nav class="toc" aria-label="Table of contents">
+            <h2>Contents</h2>
+            <ol id="tocList"></ol>
+          </nav>
+        </aside>
+      </div>
+      <footer class="footer">
+        <p>© <span id="year"></span> MS Machine Learning Interactive Learning Platform.</p>
+      </footer>
+    </div>
+  </main>
+</div>
+<script src="../../assets/js/nav-data.js"></script>
+<script src="../../assets/js/search-index.js"></script>
+<script src="../../assets/js/glossary-data.js"></script>
+<script src="../../assets/js/site.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+</body>
+</html>
