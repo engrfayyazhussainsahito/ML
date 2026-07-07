@@ -1,0 +1,113 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Lesson 14.3: Privacy and Data Governance | MS Machine Learning</title><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link rel="stylesheet" href="../../assets/css/styles.css"><link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css"></head><body data-root="../../" data-page-id="week-14/lesson-14-3" data-title="Lesson 14.3: Privacy and Data Governance"><a class="skip-link" href="#main">Skip to main content</a><div class="progress" id="readingProgress"></div><div class="mobile-topbar"><button id="openSidebar">&#9776; Navigation</button><span style="font-family:var(--serif);font-weight:700;font-size:.95rem">MS Machine Learning</span><button class="theme-toggle">&#127769; Dark mode</button></div><div class="site-shell"><aside class="sidebar" id="sidebar"><div class="brand"><span class="brand-mark">ML</span><div><h1>Machine Learning</h1><small>Interactive Learning Platform</small></div></div><button id="closeSidebar" class="btn" style="margin:.25rem 0">&#10005; Close</button><div class="nav-search"><label for="navSearch">Search lessons</label><input id="navSearch" class="site-search-input" type="search" placeholder="Type to search&#8230;" autocomplete="off"><div class="mini-results search-results"></div></div><nav id="courseNav"></nav><section class="nav-group"><div class="nav-group-title">Your Progress</div><div id="progressList" class="progress-list small"></div></section></aside><main class="main" id="main"><div class="page-wrap"><nav class="breadcrumbs"><a href="../../index.html">Home</a><span>Week 14 · Responsible AI</span></nav><section class="hero"><div class="eyebrow">Week 14 · Responsible AI</div><h1 class="page-title">Lesson 14.3: Privacy and Data Governance</h1><div class="toolbar"><button id="bookmarkBtn" class="btn">&#9734; Bookmark</button><button id="completeBtn" class="btn">Mark complete</button><button id="quizModeBtn" class="btn">&#127919; Start quiz mode</button><button class="print-page btn">&#128424; Print</button><button class="theme-toggle btn">&#127769; Dark mode</button></div></section><div class="layout-article"><article class="article" id="articleBody"><section>
+<h2>Privacy Risks in ML</h2>
+<p>ML models can leak information about their training data. Membership inference attacks determine whether a specific sample was in the training set. Model inversion attacks reconstruct training examples from model outputs. Attribute inference attacks recover sensitive attributes of training individuals. These are not hypothetical — they have been demonstrated against production models including GPT-2 and medical models.</p>
+</section>
+<section>
+<h2>Differential Privacy</h2>
+<pre><code class="language-python">import torch, torch.nn as nn
+from opacus import PrivacyEngine
+from opacus.validators import ModuleValidator
+
+# Differential Privacy: add calibrated Gaussian noise to gradients during training
+# Guarantee: changing one training example changes the output distribution by at most epsilon
+
+model = nn.Sequential(nn.Linear(10, 64), nn.ReLU(), nn.Linear(64, 2))
+# Some layers (BatchNorm) are incompatible with DP
+model = ModuleValidator.fix(model)   # replaces BatchNorm with GroupNorm
+
+optimiser = torch.optim.Adam(model.parameters(), lr=1e-3)
+train_loader = torch.utils.data.DataLoader(
+    torch.utils.data.TensorDataset(torch.randn(1000, 10), torch.randint(0, 2, (1000,))),
+    batch_size=64
+)
+
+privacy_engine = PrivacyEngine()
+model, optimiser, train_loader = privacy_engine.make_private_with_epsilon(
+    module=model,
+    optimizer=optimiser,
+    data_loader=train_loader,
+    epochs=10,
+    target_epsilon=1.0,    # privacy budget: lower = stronger privacy
+    target_delta=1e-5,     # probability of privacy failure
+    max_grad_norm=1.0,     # gradient clipping magnitude
+)
+
+# Training loop is identical — Opacus handles noise addition automatically
+for batch_x, batch_y in train_loader:
+    optimiser.zero_grad()
+    loss = nn.CrossEntropyLoss()(model(batch_x.float()), batch_y)
+    loss.backward(); optimiser.step()
+
+epsilon, delta = privacy_engine.get_epsilon(delta=1e-5), 1e-5
+print(f"Privacy guarantee: ({epsilon:.2f}, {delta})-DP")
+</code></pre>
+</section>
+<section>
+<h2>Federated Learning</h2>
+<pre><code class="language-python">import torch, torch.nn as nn, copy
+
+def federated_avg(global_model, client_models, client_sizes):
+    """
+    FedAvg: weighted average of client model parameters.
+    Clients train locally on private data; only parameters (not data) are shared.
+    """
+    total = sum(client_sizes)
+    global_state = global_model.state_dict()
+
+    for key in global_state:
+        # Weighted average by number of local samples
+        global_state[key] = sum(
+            client_models[i].state_dict()[key] * (client_sizes[i] / total)
+            for i in range(len(client_models))
+        )
+    global_model.load_state_dict(global_state)
+    return global_model
+
+def client_train(model, local_data, local_labels, n_epochs=5, lr=0.01):
+    """Simulate local training on a client device."""
+    local_model = copy.deepcopy(model)
+    opt = torch.optim.SGD(local_model.parameters(), lr=lr)
+    for _ in range(n_epochs):
+        opt.zero_grad()
+        loss = nn.CrossEntropyLoss()(local_model(local_data), local_labels)
+        loss.backward(); opt.step()
+    return local_model
+
+# Simulate 3 clients
+global_model = nn.Sequential(nn.Linear(10, 32), nn.ReLU(), nn.Linear(32, 2))
+client_data  = [torch.randn(100, 10) for _ in range(3)]
+client_labels= [torch.randint(0, 2, (100,)) for _ in range(3)]
+client_sizes = [100, 100, 100]
+
+for round_num in range(5):
+    client_models = [client_train(global_model, X, y)
+                     for X, y in zip(client_data, client_labels)]
+    global_model  = federated_avg(global_model, client_models, client_sizes)
+    print(f"Round {round_num+1} complete")
+</code></pre>
+</section>
+<section>
+<h2>GDPR and CCPA Implications</h2>
+<table>
+<thead><tr><th>Requirement</th><th>ML implication</th><th>Technical approach</th></tr></thead>
+<tbody>
+<tr><td>Right to erasure</td><td>Remove a person's data and its influence</td><td>Machine unlearning, retraining</td></tr>
+<tr><td>Right to explanation</td><td>Explain automated decisions</td><td>SHAP, LIME, interpretable models</td></tr>
+<tr><td>Data minimisation</td><td>Use only necessary data</td><td>Feature selection, purpose limitation</td></tr>
+<tr><td>Purpose limitation</td><td>No secondary use without consent</td><td>Data governance, access controls</td></tr>
+<tr><td>Accuracy</td><td>Correct erroneous personal data</td><td>Data versioning, audit logs</td></tr>
+</tbody>
+</table>
+</section>
+<section>
+<h2>Review Questions</h2>
+<div class="quiz-card" data-answer="B">
+<p><strong>Q1.</strong> In federated learning, what is shared between clients and the central server?</p>
+<label class="quiz-option"><input type="radio" name="q1" value="A"> Raw training data from each client</label>
+<label class="quiz-option"><input type="radio" name="q1" value="B"> Model parameters (gradients or weights) — never the local data</label>
+<label class="quiz-option"><input type="radio" name="q1" value="C"> Encrypted versions of the training labels</label>
+<label class="quiz-option"><input type="radio" name="q1" value="D"> Feature importance scores</label>
+<button class="btn check-quiz" style="margin-top:.5rem">Check answer</button>
+</div>
+</section>
+</article><aside><nav class="toc"><h2>Contents</h2><ol id="tocList"></ol></nav></aside></div><footer class="footer"><p>&copy; <span id="year"></span> MS Machine Learning Interactive Learning Platform.</p></footer></div></main></div><script src="../../assets/js/nav-data.js"></script><script src="../../assets/js/search-index.js"></script><script src="../../assets/js/glossary-data.js"></script><script src="../../assets/js/site.js"></script><script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script><script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script></body></html>

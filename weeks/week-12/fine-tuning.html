@@ -1,0 +1,113 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Lesson 12.4: Fine-Tuning and Prompt Engineering | MS Machine Learning</title><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link rel="stylesheet" href="../../assets/css/styles.css"><link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css"></head><body data-root="../../" data-page-id="week-12/lesson-12-4" data-title="Lesson 12.4: Fine-Tuning and Prompt Engineering"><a class="skip-link" href="#main">Skip to main content</a><div class="progress" id="readingProgress"></div><div class="mobile-topbar"><button id="openSidebar">&#9776; Navigation</button><span style="font-family:var(--serif);font-weight:700;font-size:.95rem">MS Machine Learning</span><button class="theme-toggle">&#127769; Dark mode</button></div><div class="site-shell"><aside class="sidebar" id="sidebar"><div class="brand"><span class="brand-mark">ML</span><div><h1>Machine Learning</h1><small>Interactive Learning Platform</small></div></div><button id="closeSidebar" class="btn" style="margin:.25rem 0">&#10005; Close</button><div class="nav-search"><label for="navSearch">Search lessons</label><input id="navSearch" class="site-search-input" type="search" placeholder="Type to search&#8230;" autocomplete="off"><div class="mini-results search-results"></div></div><nav id="courseNav"></nav><section class="nav-group"><div class="nav-group-title">Your Progress</div><div id="progressList" class="progress-list small"></div></section></aside><main class="main" id="main"><div class="page-wrap"><nav class="breadcrumbs"><a href="../../index.html">Home</a><span>Week 12 · Transformers</span></nav><section class="hero"><div class="eyebrow">Week 12 · Transformers</div><h1 class="page-title">Lesson 12.4: Fine-Tuning and Prompt Engineering</h1><div class="toolbar"><button id="bookmarkBtn" class="btn">&#9734; Bookmark</button><button id="completeBtn" class="btn">Mark complete</button><button id="quizModeBtn" class="btn">&#127919; Start quiz mode</button><button class="print-page btn">&#128424; Print</button><button class="theme-toggle btn">&#127769; Dark mode</button></div></section><div class="layout-article"><article class="article" id="articleBody"><section>
+<h2>Adapting Foundation Models</h2>
+<p>Foundation models contain billions of parameters trained on trillions of tokens. Adapting them to downstream tasks involves tradeoffs between performance, cost, and data requirements. The key techniques are full fine-tuning, parameter-efficient fine-tuning (PEFT), and prompt engineering.</p>
+</section>
+<section>
+<h2>Full Fine-Tuning</h2>
+<pre><code class="language-python">from transformers import (AutoModelForSequenceClassification, AutoTokenizer,
+                          TrainingArguments, Trainer)
+from datasets import load_dataset
+import numpy as np
+
+model_name = "distilbert-base-uncased"
+tokeniser  = AutoTokenizer.from_pretrained(model_name)
+model      = AutoModelForSequenceClassification.from_pretrained(model_name, num_labels=2)
+
+dataset = load_dataset("imdb")
+
+def tokenise(batch):
+    return tokeniser(batch["text"], truncation=True, max_length=256)
+
+tokenised = dataset.map(tokenise, batched=True)
+
+training_args = TrainingArguments(
+    output_dir="./results",
+    num_train_epochs=3,
+    per_device_train_batch_size=16,
+    per_device_eval_batch_size=32,
+    learning_rate=2e-5,
+    weight_decay=0.01,
+    warmup_ratio=0.1,
+    evaluation_strategy="epoch",
+    load_best_model_at_end=True,
+    metric_for_best_model="accuracy",
+)
+
+def compute_metrics(eval_pred):
+    logits, labels = eval_pred
+    preds = np.argmax(logits, axis=1)
+    return {"accuracy": (preds == labels).mean()}
+
+trainer = Trainer(
+    model=model,
+    args=training_args,
+    train_dataset=tokenised["train"].select(range(2000)),
+    eval_dataset=tokenised["test"].select(range(500)),
+    compute_metrics=compute_metrics,
+)
+trainer.train()
+</code></pre>
+</section>
+<section>
+<h2>LoRA: Low-Rank Adaptation</h2>
+<p>LoRA (Hu et al., 2021) freezes all pretrained weights and injects small trainable rank-decomposition matrices into each attention layer. Instead of updating a W∈ℝ^{d×k} matrix directly, it learns W + BA where B∈ℝ^{d×r}, A∈ℝ^{r×k}, with r&lt;&lt;d. This reduces trainable parameters by 10,000× while matching full fine-tuning performance.</p>
+<pre><code class="language-python">from peft import LoraConfig, get_peft_model, TaskType
+
+lora_config = LoraConfig(
+    task_type=TaskType.SEQ_CLS,
+    r=8,             # rank of decomposition matrices
+    lora_alpha=16,   # scaling factor: weight = (lora_alpha/r) * BA
+    lora_dropout=0.1,
+    target_modules=["q_lin", "k_lin", "v_lin"],  # which layers to adapt
+)
+
+model_lora = get_peft_model(model, lora_config)
+model_lora.print_trainable_parameters()
+# trainable params: ~300K || all params: 66M || trainable%: 0.45%
+# Full fine-tuning would update all 66M params — LoRA: only 300K
+</code></pre>
+</section>
+<section>
+<h2>Prompt Engineering</h2>
+<pre><code class="language-python">from transformers import pipeline
+
+# Zero-shot classification
+classifier = pipeline("zero-shot-classification",
+                       model="facebook/bart-large-mnli")
+
+text = "This quarterly report shows declining revenue in the APAC region."
+candidate_labels = ["finance", "technology", "sports", "politics"]
+
+result = classifier(text, candidate_labels)
+print(result['labels'])   # ['finance', 'technology', ...]
+print(result['scores'])   # [0.91, 0.04, ...]
+
+# Few-shot prompting for GPT-style models
+few_shot_prompt = """
+Classify the sentiment as positive or negative.
+
+Text: The food was amazing!
+Sentiment: positive
+
+Text: Service was incredibly slow.
+Sentiment: negative
+
+Text: {new_text}
+Sentiment:"""
+
+new_text = "The delivery arrived on time but packaging was damaged."
+prompt = few_shot_prompt.format(new_text=new_text)
+</code></pre>
+</section>
+<section>
+<h2>Review Questions</h2>
+<div class="quiz-card" data-answer="C">
+<p><strong>Q1.</strong> What is the key advantage of LoRA over full fine-tuning?</p>
+<label class="quiz-option"><input type="radio" name="q1" value="A"> LoRA achieves higher accuracy on all tasks</label>
+<label class="quiz-option"><input type="radio" name="q1" value="B"> LoRA requires no training data</label>
+<label class="quiz-option"><input type="radio" name="q1" value="C"> LoRA reduces trainable parameters by orders of magnitude by learning low-rank updates, making fine-tuning feasible with limited compute</label>
+<label class="quiz-option"><input type="radio" name="q1" value="D"> LoRA eliminates the need for a pretrained model</label>
+<button class="btn check-quiz" style="margin-top:.5rem">Check answer</button>
+</div>
+</section>
+</article><aside><nav class="toc"><h2>Contents</h2><ol id="tocList"></ol></nav></aside></div><footer class="footer"><p>&copy; <span id="year"></span> MS Machine Learning Interactive Learning Platform.</p></footer></div></main></div><script src="../../assets/js/nav-data.js"></script><script src="../../assets/js/search-index.js"></script><script src="../../assets/js/glossary-data.js"></script><script src="../../assets/js/site.js"></script><script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script><script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script></body></html>

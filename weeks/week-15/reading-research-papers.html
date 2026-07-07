@@ -1,0 +1,104 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Lesson 15.4: Reading ML Research Papers | MS Machine Learning</title><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link rel="stylesheet" href="../../assets/css/styles.css"><link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css"></head><body data-root="../../" data-page-id="week-15/lesson-15-4" data-title="Lesson 15.4: Reading ML Research Papers"><a class="skip-link" href="#main">Skip to main content</a><div class="progress" id="readingProgress"></div><div class="mobile-topbar"><button id="openSidebar">&#9776; Navigation</button><span style="font-family:var(--serif);font-weight:700;font-size:.95rem">MS Machine Learning</span><button class="theme-toggle">&#127769; Dark mode</button></div><div class="site-shell"><aside class="sidebar" id="sidebar"><div class="brand"><span class="brand-mark">ML</span><div><h1>Machine Learning</h1><small>Interactive Learning Platform</small></div></div><button id="closeSidebar" class="btn" style="margin:.25rem 0">&#10005; Close</button><div class="nav-search"><label for="navSearch">Search lessons</label><input id="navSearch" class="site-search-input" type="search" placeholder="Type to search&#8230;" autocomplete="off"><div class="mini-results search-results"></div></div><nav id="courseNav"></nav><section class="nav-group"><div class="nav-group-title">Your Progress</div><div id="progressList" class="progress-list small"></div></section></aside><main class="main" id="main"><div class="page-wrap"><nav class="breadcrumbs"><a href="../../index.html">Home</a><span>Week 15 · Advanced Topics</span></nav><section class="hero"><div class="eyebrow">Week 15 · Advanced Topics</div><h1 class="page-title">Lesson 15.4: Reading ML Research Papers</h1><div class="toolbar"><button id="bookmarkBtn" class="btn">&#9734; Bookmark</button><button id="completeBtn" class="btn">Mark complete</button><button id="quizModeBtn" class="btn">&#127919; Start quiz mode</button><button class="print-page btn">&#128424; Print</button><button class="theme-toggle btn">&#127769; Dark mode</button></div></section><div class="layout-article"><article class="article" id="articleBody"><section>
+<h2>How to Read an ML Paper</h2>
+<p>Reading research papers efficiently is a learnable skill. A 12-page NeurIPS paper can be read in 3 passes of decreasing time investment: first a 5-minute skim for relevance, then a 30-minute read for understanding the contribution, then a deep read to evaluate and reproduce results. Most practitioners never need the third pass for most papers.</p>
+</section>
+<section>
+<h2>The Three-Pass Method</h2>
+<pre><code class="language-python"># Pass 1: 5 minutes — should I read this?
+pass_1 = {
+    "read": ["Title", "Abstract", "Introduction (first paragraph)",
+             "Section headings", "Conclusion", "One figure"],
+    "answer": "What problem? What claimed contribution? Is it relevant to me?"
+}
+
+# Pass 2: 30-60 minutes — do I understand the contribution?
+pass_2 = {
+    "read": ["Full paper (skip proofs and implementation details)"],
+    "annotate": ["Key claims", "Main figures and tables", "References to follow"],
+    "answer": "What exactly did they do? Does the evidence support the claims?"
+}
+
+# Pass 3: 2-4 hours — can I reproduce it?
+pass_3 = {
+    "read": ["Full paper including proofs and appendices"],
+    "do":   ["Reproduce key experiments or proofs", "Check code if available"],
+    "answer": "Are the claims correct? What are the limitations? What's missing?"
+}
+</code></pre>
+</section>
+<section>
+<h2>Anatomy of an ML Paper</h2>
+<table>
+<thead><tr><th>Section</th><th>What to extract</th><th>Red flags</th></tr></thead>
+<tbody>
+<tr><td>Abstract</td><td>Core claim + metric claimed</td><td>No comparison baseline stated</td></tr>
+<tr><td>Related Work</td><td>Positioning vs prior art</td><td>Missing key related papers</td></tr>
+<tr><td>Method</td><td>Novel contribution; reproducibility</td><td>Vague descriptions; no equations</td></tr>
+<tr><td>Experiments</td><td>Datasets; baselines; ablations</td><td>Weak baselines; no error bars; cherry-picked results</td></tr>
+<tr><td>Results</td><td>Main table; statistical significance</td><td>No significance tests; results on training set</td></tr>
+<tr><td>Limitations</td><td>What the method doesn't do</td><td>Absent limitations section</td></tr>
+</tbody>
+</table>
+</section>
+<section>
+<h2>Evaluating Claims Critically</h2>
+<pre><code class="language-python"># Questions to ask about any empirical claim
+
+questions = [
+    "Is the baseline strong? (recent, tuned, using the same budget?)",
+    "Is the dataset the same split/version as prior work?",
+    "Are error bars or confidence intervals reported?",
+    "Is the claimed improvement statistically significant?",
+    "Does the method have more parameters/compute than the baseline?",
+    "Are results on held-out test data, or validation data?",
+    "Is there an ablation study isolating each contribution?",
+    "Is code available? Do results reproduce?",
+    "Would the method work on my problem, or is it dataset-specific?",
+]
+
+# Essential landmark papers to read for each area:
+landmark_papers = {
+    "Deep Learning":        ["Krizhevsky 2012 (AlexNet)", "Goodfellow 2014 (GAN)", "He 2016 (ResNet)"],
+    "NLP":                  ["Vaswani 2017 (Transformer)", "Devlin 2018 (BERT)", "Brown 2020 (GPT-3)"],
+    "Optimisation":         ["Kingma 2014 (Adam)", "Loshchilov 2019 (AdamW)"],
+    "Regularisation":       ["Srivastava 2014 (Dropout)", "Ioffe 2015 (BatchNorm)"],
+    "Self-supervised":      ["He 2020 (MoCo)", "Chen 2020 (SimCLR)", "He 2022 (MAE)"],
+    "Generative":           ["Kingma 2013 (VAE)", "Ho 2020 (DDPM)"],
+}
+
+for area, papers in landmark_papers.items():
+    print(f"\n{area}:")
+    for p in papers: print(f"  - {p}")
+</code></pre>
+</section>
+<section>
+<h2>Finding and Tracking Papers</h2>
+<pre><code class="language-python"># Useful tools for staying current
+tools = {
+    "arXiv":         "arxiv.org — preprints, use cs.LG and stat.ML categories",
+    "Papers With Code": "paperswithcode.com — papers + code + leaderboards",
+    "Connected Papers": "connectedpapers.com — visualise citation graph",
+    "Semantic Scholar": "semanticscholar.org — free semantic search + citations",
+    "Twitter/X":     "Follow @karpathy, @ylecun, @geodesicml, conference accounts",
+    "Conferences":   "NeurIPS, ICML, ICLR, CVPR, ACL, EMNLP — top-tier venues",
+    "Newsletters":   "Import AI, The Batch (deeplearning.ai), TLDR AI",
+}
+
+# Reading strategy: depth over breadth
+# 1. Read 2-3 foundational papers per week deeply
+# 2. Skim 5-10 recent papers for titles+abstracts
+# 3. Maintain a paper notes document (Notion/Obsidian/markdown)
+</code></pre>
+</section>
+<section>
+<h2>Review Questions</h2>
+<div class="quiz-card" data-answer="B">
+<p><strong>Q1.</strong> A paper reports 2% improvement over a baseline with no error bars. What should you check first?</p>
+<label class="quiz-option"><input type="radio" name="q1" value="A"> Whether the model is larger than the baseline</label>
+<label class="quiz-option"><input type="radio" name="q1" value="B"> Whether the improvement is statistically significant — 2% with high variance may be noise</label>
+<label class="quiz-option"><input type="radio" name="q1" value="C"> Whether the paper is from a top conference</label>
+<label class="quiz-option"><input type="radio" name="q1" value="D"> Whether the dataset is publicly available</label>
+<button class="btn check-quiz" style="margin-top:.5rem">Check answer</button>
+</div>
+</section>
+</article><aside><nav class="toc"><h2>Contents</h2><ol id="tocList"></ol></nav></aside></div><footer class="footer"><p>&copy; <span id="year"></span> MS Machine Learning Interactive Learning Platform.</p></footer></div></main></div><script src="../../assets/js/nav-data.js"></script><script src="../../assets/js/search-index.js"></script><script src="../../assets/js/glossary-data.js"></script><script src="../../assets/js/site.js"></script><script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script><script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script></body></html>

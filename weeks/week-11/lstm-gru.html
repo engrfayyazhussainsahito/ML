@@ -1,0 +1,116 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Lesson 11.3: LSTMs and GRUs | MS Machine Learning</title><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link rel="stylesheet" href="../../assets/css/styles.css"><link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css"></head><body data-root="../../" data-page-id="week-11/lesson-11-3" data-title="Lesson 11.3: LSTMs and GRUs"><a class="skip-link" href="#main">Skip to main content</a><div class="progress" id="readingProgress"></div><div class="mobile-topbar"><button id="openSidebar">&#9776; Navigation</button><span style="font-family:var(--serif);font-weight:700;font-size:.95rem">MS Machine Learning</span><button class="theme-toggle">&#127769; Dark mode</button></div><div class="site-shell"><aside class="sidebar" id="sidebar"><div class="brand"><span class="brand-mark">ML</span><div><h1>Machine Learning</h1><small>Interactive Learning Platform</small></div></div><button id="closeSidebar" class="btn" style="margin:.25rem 0">&#10005; Close</button><div class="nav-search"><label for="navSearch">Search lessons</label><input id="navSearch" class="site-search-input" type="search" placeholder="Type to search&#8230;" autocomplete="off"><div class="mini-results search-results"></div></div><nav id="courseNav"></nav><section class="nav-group"><div class="nav-group-title">Your Progress</div><div id="progressList" class="progress-list small"></div></section></aside><main class="main" id="main"><div class="page-wrap"><nav class="breadcrumbs"><a href="../../index.html">Home</a><span>Week 11 · Sequence Models</span></nav><section class="hero"><div class="eyebrow">Week 11 · Sequence Models</div><h1 class="page-title">Lesson 11.3: LSTMs and GRUs</h1><div class="toolbar"><button id="bookmarkBtn" class="btn">&#9734; Bookmark</button><button id="completeBtn" class="btn">Mark complete</button><button id="quizModeBtn" class="btn">&#127919; Start quiz mode</button><button class="print-page btn">&#128424; Print</button><button class="theme-toggle btn">&#127769; Dark mode</button></div></section><div class="layout-article"><article class="article" id="articleBody"><section>
+<h2>The LSTM Solution</h2>
+<p>Hochreiter and Schmidhuber (1997) designed the Long Short-Term Memory cell to address the vanishing gradient problem. The key innovation: a separate <strong>cell state</strong> cₜ — a "conveyor belt" of information — that flows through time with only multiplicative interactions (gates), allowing gradients to flow unimpeded across many timesteps.</p>
+</section>
+<section>
+<h2>The Four Gates</h2>
+<pre><code class="language-python">import torch, torch.nn as nn
+
+class LSTMCell(nn.Module):
+    """Manual LSTM cell for pedagogical clarity."""
+    def __init__(self, input_dim, hidden_dim):
+        super().__init__()
+        # All four gates computed in one matrix multiply for efficiency
+        self.linear = nn.Linear(input_dim + hidden_dim, 4 * hidden_dim)
+
+    def forward(self, x, h_prev, c_prev):
+        """x: (batch, input_dim); h_prev, c_prev: (batch, hidden_dim)"""
+        combined = torch.cat([x, h_prev], dim=1)   # (batch, input+hidden)
+        gates = self.linear(combined)               # (batch, 4*hidden)
+        input_gate, forget_gate, cell_gate, output_gate = gates.chunk(4, dim=1)
+
+        i = torch.sigmoid(input_gate)    # how much of new info to let in
+        f = torch.sigmoid(forget_gate)   # how much of old cell to keep
+        g = torch.tanh(cell_gate)        # candidate new cell content
+        o = torch.sigmoid(output_gate)   # how much of cell to output
+
+        c = f * c_prev + i * g    # new cell state: update old, add new
+        h = o * torch.tanh(c)     # new hidden state: filtered cell
+
+        return h, c
+
+# Using PyTorch's optimised LSTM
+lstm = nn.LSTM(input_size=10, hidden_size=128, num_layers=2,
+               batch_first=True, dropout=0.2, bidirectional=False)
+x = torch.randn(32, 50, 10)   # (batch, seq_len, features)
+out, (h_n, c_n) = lstm(x)
+print(f"Output:      {out.shape}")   # (32, 50, 128)
+print(f"Hidden (h):  {h_n.shape}")  # (2, 32, 128) — 2 layers
+print(f"Cell (c):    {c_n.shape}")  # (2, 32, 128)
+</code></pre>
+</section>
+<section>
+<h2>GRU: Gated Recurrent Unit</h2>
+<pre><code class="language-python">import torch, torch.nn as nn
+
+# GRU simplifies LSTM: merges forget/input gates, removes cell state
+class GRUCell(nn.Module):
+    def __init__(self, input_dim, hidden_dim):
+        super().__init__()
+        self.reset_gate  = nn.Linear(input_dim + hidden_dim, hidden_dim)
+        self.update_gate = nn.Linear(input_dim + hidden_dim, hidden_dim)
+        self.new_gate    = nn.Linear(input_dim + hidden_dim, hidden_dim)
+
+    def forward(self, x, h_prev):
+        combined = torch.cat([x, h_prev], dim=1)
+        r = torch.sigmoid(self.reset_gate(combined))   # reset: how much past to use
+        z = torch.sigmoid(self.update_gate(combined))  # update: interpolation weight
+        n = torch.tanh(self.new_gate(torch.cat([x, r * h_prev], dim=1)))
+        h = (1 - z) * h_prev + z * n   # interpolate old and new
+        return h
+
+# Bidirectional LSTM: process sequence both forwards and backwards
+bilstm = nn.LSTM(10, 128, batch_first=True, bidirectional=True)
+x = torch.randn(32, 50, 10)
+out, _ = bilstm(x)
+print(f"BiLSTM output: {out.shape}")   # (32, 50, 256) — 2×128
+</code></pre>
+</section>
+<section>
+<h2>Sequence Classification Example</h2>
+<pre><code class="language-python">import torch, torch.nn as nn
+
+class SentimentClassifier(nn.Module):
+    def __init__(self, vocab_size, embed_dim, hidden_dim, n_classes):
+        super().__init__()
+        self.embedding = nn.Embedding(vocab_size, embed_dim, padding_idx=0)
+        self.lstm = nn.LSTM(embed_dim, hidden_dim, num_layers=2,
+                            batch_first=True, dropout=0.3, bidirectional=True)
+        self.dropout = nn.Dropout(0.5)
+        self.fc = nn.Linear(2 * hidden_dim, n_classes)   # *2 for bidirectional
+
+    def forward(self, token_ids, lengths):
+        # token_ids: (batch, max_seq_len)
+        embedded = self.dropout(self.embedding(token_ids))
+
+        from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence
+        packed = pack_padded_sequence(embedded, lengths.cpu(), batch_first=True,
+                                      enforce_sorted=False)
+        out, (h_n, _) = self.lstm(packed)
+
+        # Concatenate last forward and backward hidden states
+        h_fwd = h_n[-2]   # last layer, forward
+        h_bwd = h_n[-1]   # last layer, backward
+        h = torch.cat([h_fwd, h_bwd], dim=1)
+
+        return self.fc(self.dropout(h))
+
+model = SentimentClassifier(vocab_size=10000, embed_dim=128,
+                             hidden_dim=256, n_classes=3)
+token_ids = torch.randint(1, 10000, (32, 100))   # (batch, max_len)
+lengths   = torch.randint(20, 100, (32,))
+print(model(token_ids, lengths).shape)   # (32, 3)
+</code></pre>
+</section>
+<section>
+<h2>Review Questions</h2>
+<div class="quiz-card" data-answer="B">
+<p><strong>Q1.</strong> How does the LSTM cell state (cₜ) differ from the hidden state (hₜ)?</p>
+<label class="quiz-option"><input type="radio" name="q1" value="A"> The cell state is the output; hidden state is internal only</label>
+<label class="quiz-option"><input type="radio" name="q1" value="B"> The cell state is a long-term memory that flows with only multiplicative (gate) interactions, allowing gradients to persist; hidden state is the short-term output</label>
+<label class="quiz-option"><input type="radio" name="q1" value="C"> They are identical in function but different in size</label>
+<label class="quiz-option"><input type="radio" name="q1" value="D"> The cell state is used only during inference, not training</label>
+<button class="btn check-quiz" style="margin-top:.5rem">Check answer</button>
+</div>
+</section>
+</article><aside><nav class="toc"><h2>Contents</h2><ol id="tocList"></ol></nav></aside></div><footer class="footer"><p>&copy; <span id="year"></span> MS Machine Learning Interactive Learning Platform.</p></footer></div></main></div><script src="../../assets/js/nav-data.js"></script><script src="../../assets/js/search-index.js"></script><script src="../../assets/js/glossary-data.js"></script><script src="../../assets/js/site.js"></script><script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script><script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script></body></html>

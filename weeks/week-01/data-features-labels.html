@@ -1,0 +1,126 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Lesson 1.4: Data, Features and Labels | MS Machine Learning</title><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link rel="stylesheet" href="../../assets/css/styles.css"><link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css"></head><body data-root="../../" data-page-id="week-01/lesson-1-4" data-title="Lesson 1.4: Data, Features and Labels"><a class="skip-link" href="#main">Skip to main content</a><div class="progress" id="readingProgress"></div><div class="mobile-topbar"><button id="openSidebar">&#9776; Navigation</button><span style="font-family:var(--serif);font-weight:700;font-size:.95rem">MS Machine Learning</span><button class="theme-toggle">&#127769; Dark mode</button></div><div class="site-shell"><aside class="sidebar" id="sidebar"><div class="brand"><span class="brand-mark">ML</span><div><h1>Machine Learning</h1><small>Interactive Learning Platform</small></div></div><button id="closeSidebar" class="btn" style="margin:.25rem 0">&#10005; Close</button><div class="nav-search"><label for="navSearch">Search lessons</label><input id="navSearch" class="site-search-input" type="search" placeholder="Type to search&#8230;" autocomplete="off"><div class="mini-results search-results"></div></div><nav id="courseNav"></nav><section class="nav-group"><div class="nav-group-title">Your Progress</div><div id="progressList" class="progress-list small"></div></section></aside><main class="main" id="main"><div class="page-wrap"><nav class="breadcrumbs"><a href="../../index.html">Home</a><span>Week 1 · What is Machine Learning?</span></nav><section class="hero"><div class="eyebrow">Week 1 · What is Machine Learning?</div><h1 class="page-title">Lesson 1.4: Data, Features and Labels</h1><div class="toolbar"><button id="bookmarkBtn" class="btn">&#9734; Bookmark</button><button id="completeBtn" class="btn">Mark complete</button><button id="quizModeBtn" class="btn">&#127919; Start quiz mode</button><button class="print-page btn">&#128424; Print</button><button class="theme-toggle btn">&#127769; Dark mode</button></div></section><div class="layout-article"><article class="article" id="articleBody"><section>
+<h2>The Feature Matrix</h2>
+<p>In supervised learning, data is represented as a matrix X of shape (n_samples, n_features). Each row is one observation; each column is one feature. The label vector y has shape (n_samples,) for single-output tasks.</p>
+<pre><code class="language-python">import pandas as pd, numpy as np
+
+df = pd.read_csv("housing.csv")
+target = "price"
+X = df.drop(columns=[target]).values   # shape (n, p)
+y = df[target].values                  # shape (n,)
+
+print(f"Samples:  {X.shape[0]}")
+print(f"Features: {X.shape[1]}")
+print(f"Target:   {y.min():.0f} - {y.max():.0f}")
+</code></pre>
+</section>
+<section>
+<h2>Feature Types and Preprocessing</h2>
+<table>
+<thead><tr><th>Type</th><th>Example</th><th>Preprocessing</th></tr></thead>
+<tbody>
+<tr><td>Continuous</td><td>Temperature, income</td><td>StandardScaler or MinMaxScaler</td></tr>
+<tr><td>Ordinal</td><td>Rating 1-5, education level</td><td>Integer encoding or OrdinalEncoder</td></tr>
+<tr><td>Nominal</td><td>Country, colour</td><td>OneHotEncoder or TargetEncoder</td></tr>
+<tr><td>Binary</td><td>Yes/no flags</td><td>Usually already 0/1</td></tr>
+<tr><td>Text</td><td>Reviews, descriptions</td><td>TF-IDF or embeddings</td></tr>
+<tr><td>Image</td><td>Photos, scans</td><td>Normalise pixels, augment</td></tr>
+<tr><td>Temporal</td><td>Timestamps</td><td>Extract cyclic features (sin/cos)</td></tr>
+</tbody>
+</table>
+<pre><code class="language-python">import pandas as pd
+from sklearn.preprocessing import StandardScaler, OneHotEncoder
+from sklearn.compose import ColumnTransformer
+
+df = pd.DataFrame({
+    "age":      [25, 32, 47],
+    "city":     ["NYC", "LA", "SF"],
+    "income":   [50000, 72000, 91000],
+    "employed": [1, 1, 0],
+})
+
+num_cols = ["age", "income"]
+cat_cols = ["city"]
+
+preprocessor = ColumnTransformer([
+    ("num", StandardScaler(), num_cols),
+    ("cat", OneHotEncoder(drop="first", sparse_output=False), cat_cols),
+])
+X_preprocessed = preprocessor.fit_transform(df)
+print(X_preprocessed.shape)
+</code></pre>
+</section>
+<section>
+<h2>Temporal Features</h2>
+<pre><code class="language-python">import pandas as pd, numpy as np
+
+df = pd.DataFrame({"timestamp": pd.date_range("2024-01-01", periods=365, freq="D")})
+
+# Cyclic encoding prevents discontinuity at year/month boundaries
+df["hour_sin"] = np.sin(2 * np.pi * df["timestamp"].dt.hour / 24)
+df["hour_cos"] = np.cos(2 * np.pi * df["timestamp"].dt.hour / 24)
+df["dow_sin"]  = np.sin(2 * np.pi * df["timestamp"].dt.dayofweek / 7)
+df["dow_cos"]  = np.cos(2 * np.pi * df["timestamp"].dt.dayofweek / 7)
+df["month_sin"] = np.sin(2 * np.pi * df["timestamp"].dt.month / 12)
+df["month_cos"] = np.cos(2 * np.pi * df["timestamp"].dt.month / 12)
+</code></pre>
+</section>
+<section>
+<h2>Data Leakage</h2>
+<p>Leakage occurs when information from future data or the test set contaminates training. It produces optimistic evaluation metrics and models that fail in production.</p>
+<div class="callout danger">Most common leakage source: fitting a scaler on the entire dataset before splitting. Always fit preprocessing objects only on training data, then apply (transform) to validation/test.</div>
+<pre><code class="language-python">from sklearn.pipeline import Pipeline
+from sklearn.preprocessing import StandardScaler
+from sklearn.linear_model import LogisticRegression
+
+# WRONG: scaler sees test data statistics
+scaler = StandardScaler()
+X_all_scaled = scaler.fit_transform(X)   # leaks test into scaler
+
+# CORRECT: use Pipeline — it handles fit/transform split automatically
+pipe = Pipeline([
+    ("scaler", StandardScaler()),
+    ("clf", LogisticRegression())
+])
+pipe.fit(X_train, y_train)   # scaler fitted only on X_train
+score = pipe.score(X_test, y_test)   # scaler.transform(X_test) internally
+</code></pre>
+</section>
+<section>
+<h2>Label Quality</h2>
+<p>Label noise — incorrectly labelled examples — degrades performance more than feature noise. Common causes: annotator disagreement, ambiguous class definitions, and automated labelling errors.</p>
+<pre><code class="language-python">from sklearn.metrics import cohen_kappa_score
+import numpy as np
+
+# Measure inter-annotator agreement
+a1 = np.array([0,1,1,0,1,0,0,1,1,0])
+a2 = np.array([0,1,0,0,1,0,1,1,1,0])
+kappa = cohen_kappa_score(a1, a2)
+print(f"Cohen's kappa: {kappa:.3f}")
+# < 0.4: poor; 0.4-0.6: moderate; 0.6-0.8: substantial; >0.8: near-perfect
+
+# Label smoothing: soften one-hot labels to reduce overconfidence
+def smooth_labels(y_onehot, epsilon=0.1):
+    n_classes = y_onehot.shape[1]
+    return y_onehot * (1 - epsilon) + epsilon / n_classes
+</code></pre>
+</section>
+<section>
+<h2>Review Questions</h2>
+<div class="quiz-card" data-answer="C">
+<p><strong>Q1.</strong> Why is fitting a StandardScaler on the full dataset before splitting a problem?</p>
+<label class="quiz-option"><input type="radio" name="q1" value="A"> It makes training slower</label>
+<label class="quiz-option"><input type="radio" name="q1" value="B"> StandardScaler does not work on the full dataset</label>
+<label class="quiz-option"><input type="radio" name="q1" value="C"> Test set statistics leak into the scaler, producing optimistically biased evaluation</label>
+<label class="quiz-option"><input type="radio" name="q1" value="D"> It prevents normalisation</label>
+<button class="btn check-quiz" style="margin-top:.5rem">Check answer</button>
+</div>
+<div class="quiz-card" data-answer="B">
+<p><strong>Q2.</strong> For a timestamp feature, why use sin/cos encoding instead of raw hour (0-23)?</p>
+<label class="quiz-option"><input type="radio" name="q2" value="A"> It reduces memory usage</label>
+<label class="quiz-option"><input type="radio" name="q2" value="B"> It makes hour 23 and hour 0 adjacent in feature space, capturing cyclical continuity</label>
+<label class="quiz-option"><input type="radio" name="q2" value="C"> It forces all values into [0,1]</label>
+<label class="quiz-option"><input type="radio" name="q2" value="D"> Neural networks require it</label>
+<button class="btn check-quiz" style="margin-top:.5rem">Check answer</button>
+</div>
+</section>
+</article><aside><nav class="toc"><h2>Contents</h2><ol id="tocList"></ol></nav></aside></div><footer class="footer"><p>&copy; <span id="year"></span> MS Machine Learning Interactive Learning Platform.</p></footer></div></main></div><script src="../../assets/js/nav-data.js"></script><script src="../../assets/js/search-index.js"></script><script src="../../assets/js/glossary-data.js"></script><script src="../../assets/js/site.js"></script><script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script><script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script></body></html>

@@ -1,0 +1,88 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Lesson 16.1: Capstone Project Guidelines | MS Machine Learning</title><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link rel="stylesheet" href="../../assets/css/styles.css"><link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css"></head><body data-root="../../" data-page-id="week-16/lesson-16-1" data-title="Lesson 16.1: Capstone Project Guidelines"><a class="skip-link" href="#main">Skip to main content</a><div class="progress" id="readingProgress"></div><div class="mobile-topbar"><button id="openSidebar">&#9776; Navigation</button><span style="font-family:var(--serif);font-weight:700;font-size:.95rem">MS Machine Learning</span><button class="theme-toggle">&#127769; Dark mode</button></div><div class="site-shell"><aside class="sidebar" id="sidebar"><div class="brand"><span class="brand-mark">ML</span><div><h1>Machine Learning</h1><small>Interactive Learning Platform</small></div></div><button id="closeSidebar" class="btn" style="margin:.25rem 0">&#10005; Close</button><div class="nav-search"><label for="navSearch">Search lessons</label><input id="navSearch" class="site-search-input" type="search" placeholder="Type to search&#8230;" autocomplete="off"><div class="mini-results search-results"></div></div><nav id="courseNav"></nav><section class="nav-group"><div class="nav-group-title">Your Progress</div><div id="progressList" class="progress-list small"></div></section></aside><main class="main" id="main"><div class="page-wrap"><nav class="breadcrumbs"><a href="../../index.html">Home</a><span>Week 16 · Capstone</span></nav><section class="hero"><div class="eyebrow">Week 16 · Capstone</div><h1 class="page-title">Lesson 16.1: Capstone Project Guidelines</h1><div class="toolbar"><button id="bookmarkBtn" class="btn">&#9734; Bookmark</button><button id="completeBtn" class="btn">Mark complete</button><button id="quizModeBtn" class="btn">&#127919; Start quiz mode</button><button class="print-page btn">&#128424; Print</button><button class="theme-toggle btn">&#127769; Dark mode</button></div></section><div class="layout-article"><article class="article" id="articleBody"><section>
+<h2>Capstone Project Overview</h2>
+<p>The capstone is a self-directed end-to-end ML project demonstrating mastery of the full pipeline: problem framing, data collection, EDA, feature engineering, model development, evaluation, and communication. It is the centrepiece of your portfolio and the primary evidence of graduate-level competence you will present to employers and research programmes.</p>
+</section>
+<section>
+<h2>Project Scope Guidelines</h2>
+<table>
+<thead><tr><th>Dimension</th><th>Minimum</th><th>Strong</th><th>Exceptional</th></tr></thead>
+<tbody>
+<tr><td>Problem type</td><td>Classification or regression on a public dataset</td><td>Novel dataset you collected or curated</td><td>Multi-modal or multi-task problem</td></tr>
+<tr><td>Data size</td><td>&gt;1000 samples</td><td>&gt;10k samples with cleaning challenges</td><td>Million+ samples with engineering</td></tr>
+<tr><td>Models</td><td>2+ baselines + 1 strong model</td><td>Systematic comparison + ablation</td><td>Novel architecture or training procedure</td></tr>
+<tr><td>Evaluation</td><td>Train/val/test split, 2+ metrics</td><td>Cross-validation, confidence intervals</td><td>Human evaluation or real deployment</td></tr>
+<tr><td>Code</td><td>Working notebook</td><td>Modular Python package with tests</td><td>Production-ready with CI/CD</td></tr>
+<tr><td>Documentation</td><td>README</td><td>README + model card + report</td><td>Published paper or technical blog</td></tr>
+</tbody>
+</table>
+</section>
+<section>
+<h2>Project Timeline</h2>
+<pre><code class="language-python">timeline = {
+    "Week 1: Scoping": [
+        "Choose domain and problem type",
+        "Survey existing solutions (literature review)",
+        "Identify data sources",
+        "Define success metric and baseline",
+        "Write project proposal (1 page)"
+    ],
+    "Week 2: Data": [
+        "Collect/download dataset",
+        "Perform EDA on training split only",
+        "Document data quality issues",
+        "Write dataset description (data card)"
+    ],
+    "Week 3-4: Modelling": [
+        "Implement preprocessing pipeline",
+        "Train baseline models",
+        "Iterative improvement with CV",
+        "Hyperparameter optimisation",
+        "Error analysis — what does the model get wrong?"
+    ],
+    "Week 5: Evaluation and Write-up": [
+        "Final evaluation on test set (once!)",
+        "Statistical significance testing",
+        "Write project report",
+        "Prepare defence presentation",
+        "Clean and document code"
+    ]
+}
+
+for phase, tasks in timeline.items():
+    print(f"\n{phase}")
+    for task in tasks: print(f"  - {task}")
+</code></pre>
+</section>
+<section>
+<h2>Selecting a Problem</h2>
+<pre><code class="language-python">evaluation_criteria = {
+    "Novelty":      "Is this problem genuinely open, or solved by existing tools?",
+    "Impact":       "Would a good solution matter to real people?",
+    "Feasibility":  "Can you get sufficient data? Is compute available?",
+    "Differentiability": "Does this showcase skills others might not have?",
+    "Interest":     "Will you stay motivated for 5 weeks?"
+}
+
+good_project_ideas = [
+    "Predict medical readmission from EHR data (tabular + temporal)",
+    "Low-resource NMT for an underrepresented language pair",
+    "Real-time sign language recognition from webcam",
+    "Predicting software bug severity from commit messages + diffs",
+    "Multi-label scientific article classification across 100+ categories",
+    "Energy consumption forecasting with external weather features",
+    "Satellite image segmentation for deforestation monitoring",
+]
+</code></pre>
+</section>
+<section>
+<h2>Review Questions</h2>
+<div class="quiz-card" data-answer="D">
+<p><strong>Q1.</strong> At what point in the capstone project should you evaluate your model on the test set?</p>
+<label class="quiz-option"><input type="radio" name="q1" value="A"> After completing the EDA to check data quality</label>
+<label class="quiz-option"><input type="radio" name="q1" value="B"> After every model iteration to track progress</label>
+<label class="quiz-option"><input type="radio" name="q1" value="C"> When selecting the best hyperparameters</label>
+<label class="quiz-option"><input type="radio" name="q1" value="D"> Once only, at the very end, after all development decisions are finalised</label>
+<button class="btn check-quiz" style="margin-top:.5rem">Check answer</button>
+</div>
+</section>
+</article><aside><nav class="toc"><h2>Contents</h2><ol id="tocList"></ol></nav></aside></div><footer class="footer"><p>&copy; <span id="year"></span> MS Machine Learning Interactive Learning Platform.</p></footer></div></main></div><script src="../../assets/js/nav-data.js"></script><script src="../../assets/js/search-index.js"></script><script src="../../assets/js/glossary-data.js"></script><script src="../../assets/js/site.js"></script><script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script><script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script></body></html>

@@ -1,0 +1,167 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Lesson 0.5: Probability &amp; Statistics | MS Machine Learning</title><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link rel="stylesheet" href="../../assets/css/styles.css"><link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css"></head><body data-root="../../" data-page-id="week-00/lesson-0-5" data-title="Lesson 0.5: Probability &amp; Statistics"><a class="skip-link" href="#main">Skip to main content</a><div class="progress" id="readingProgress"></div><div class="mobile-topbar"><button id="openSidebar">☰ Navigation</button><span style="font-family:var(--serif);font-weight:700;font-size:.95rem">MS Machine Learning</span><button class="theme-toggle">🌙 Dark mode</button></div><div class="site-shell"><aside class="sidebar" id="sidebar"><div class="brand"><span class="brand-mark">ML</span><div><h1>Machine Learning</h1><small>Interactive Learning Platform</small></div></div><button id="closeSidebar" class="btn" style="margin:.25rem 0">✕ Close</button><div class="nav-search"><label for="navSearch">Search lessons</label><input id="navSearch" class="site-search-input" type="search" placeholder="Type to search…" autocomplete="off"><div class="mini-results search-results"></div></div><nav id="courseNav"></nav><section class="nav-group"><div class="nav-group-title">Your Progress</div><div id="progressList" class="progress-list small"></div></section></aside><main class="main" id="main"><div class="page-wrap"><nav class="breadcrumbs"><a href="../../index.html">Home</a><span>Week 0 · Python &amp; Maths Primer</span></nav><section class="hero"><div class="eyebrow">Week 0 · Python &amp; Maths Primer</div><h1 class="page-title">Lesson 0.5: Probability &amp; Statistics</h1><div class="toolbar"><button id="bookmarkBtn" class="btn">☆ Bookmark</button><button id="completeBtn" class="btn">Mark complete</button><button id="quizModeBtn" class="btn">🎯 Start quiz mode</button><button class="print-page btn">🖨 Print</button><button class="theme-toggle btn">🌙 Dark mode</button></div></section><div class="layout-article"><article class="article" id="articleBody"><section>
+<h2>Why Probability for ML?</h2>
+<p>ML models do not produce deterministic outputs — they produce <em>probability distributions</em> over outputs. A classifier outputs P(y=k|x), not a hard label. A language model outputs P(next token | context). Loss functions like cross-entropy and MSE are derived directly from probabilistic principles. Understanding probability lets you read ML papers, design custom losses, and reason about uncertainty.</p>
+</section>
+<section>
+<h2>Key Distributions in ML</h2>
+<pre><code class="language-python">import numpy as np
+from scipy import stats
+
+# --- Gaussian N(mu, sigma^2) ---
+mu, sigma = 2.0, 0.5
+samples = np.random.normal(mu, sigma, 10000)
+print(samples.mean(), samples.std())     # ≈ 2.0, 0.5
+
+# PDF and CDF
+x = np.linspace(0, 4, 200)
+pdf = stats.norm.pdf(x, mu, sigma)
+cdf = stats.norm.cdf(x, mu, sigma)
+
+# 68-95-99.7 rule
+print(stats.norm.cdf(mu + sigma, mu, sigma) -
+      stats.norm.cdf(mu - sigma, mu, sigma))   # 0.683
+print(stats.norm.cdf(mu + 2*sigma, mu, sigma) -
+      stats.norm.cdf(mu - 2*sigma, mu, sigma)) # 0.954
+
+# --- Bernoulli: binary label ---
+p = 0.3
+flips = np.random.binomial(1, p, 1000)
+print(flips.mean())   # ≈ 0.3
+
+# --- Categorical: multi-class ---
+probs = [0.1, 0.6, 0.3]
+labels = np.random.choice([0,1,2], size=5000, p=probs)
+print(np.bincount(labels) / 5000)  # ≈ [0.1, 0.6, 0.3]
+</code></pre>
+<table>
+<thead><tr><th>Distribution</th><th>Support</th><th>ML Use</th></tr></thead>
+<tbody>
+<tr><td>Bernoulli(p)</td><td>{0,1}</td><td>Binary label, dropout mask</td></tr>
+<tr><td>Categorical(p)</td><td>{1…K}</td><td>Multi-class output, token sampling</td></tr>
+<tr><td>Gaussian N(μ,σ²)</td><td>ℝ</td><td>Regression noise, weight init, VAE latent</td></tr>
+<tr><td>Uniform U(a,b)</td><td>[a,b]</td><td>Random search, data augmentation</td></tr>
+<tr><td>Beta(α,β)</td><td>(0,1)</td><td>Mixup augmentation, Bayesian priors</td></tr>
+<tr><td>Dirichlet(α)</td><td>Simplex</td><td>Topic model priors, label smoothing</td></tr>
+</tbody>
+</table>
+</section>
+<section>
+<h2>Expectation and Variance</h2>
+<p>The <strong>expectation</strong> E[X] is the probability-weighted average of a random variable. The <strong>variance</strong> Var[X] = E[(X − E[X])²] measures spread. These two quantities define the bias–variance decomposition of generalisation error.</p>
+<pre><code class="language-python">X = np.random.randn(10000, 5)
+
+# Empirical estimates
+E_X   = X.mean(axis=0)       # (5,) — unbiased for E[X]
+Var_X = X.var(axis=0)        # (5,) — biased (ddof=0); use ddof=1 for unbiased
+Std_X = X.std(axis=0)
+
+# Covariance matrix: how features move together
+Cov = np.cov(X.T)            # (5,5) — uses ddof=1
+Corr = np.corrcoef(X.T)      # (5,5) — normalised to [-1,1]
+
+# For independent standard normals, Cov ≈ I
+print(np.abs(Cov - np.eye(5)).max())   # ≈ small
+
+# Important identity: Var[aX + b] = a²Var[X]
+# (scaling by a multiplies std by |a|, not variance)
+</code></pre>
+</section>
+<section>
+<h2>Bayes' Theorem</h2>
+<p>Bayes' theorem is the foundation of probabilistic inference, telling us how to update beliefs after observing evidence:</p>
+<blockquote>P(θ|data) = P(data|θ) · P(θ) / P(data)</blockquote>
+<pre><code class="language-python">from sklearn.naive_bayes import GaussianNB
+import numpy as np
+
+# Naive Bayes: P(y=k|x) ∝ P(x|y=k) · P(y=k)
+# Assumes features are conditionally independent given class
+X_train = np.random.randn(200, 4)
+y_train = np.random.randint(0, 3, 200)
+
+clf = GaussianNB()
+clf.fit(X_train, y_train)
+
+# Learned parameters
+print("Class priors:", clf.class_prior_)      # P(y=k)
+print("Feature means:\n", clf.theta_)         # P(xj|y=k) means
+print("Feature variances:\n", clf.var_)
+
+# Posterior probabilities
+X_test = np.random.randn(5, 4)
+probs = clf.predict_proba(X_test)
+print("Posteriors:\n", probs.round(3))
+</code></pre>
+</section>
+<section>
+<h2>Maximum Likelihood Estimation</h2>
+<p>MLE finds parameters θ* = argmax<sub>θ</sub> Σᵢ log P(xᵢ|θ). The log converts the product of likelihoods into a sum — numerically stable and easy to differentiate. Cross-entropy minimisation <em>is</em> MLE for a categorical model.</p>
+<pre><code class="language-python">from scipy.optimize import minimize_scalar
+import numpy as np
+
+data = np.array([2.1, 1.9, 2.3, 1.8, 2.0, 2.2, 1.7, 2.4])
+sigma = 0.3  # assume known for illustration
+
+# Negative log-likelihood for Gaussian with known sigma
+def neg_log_lik(mu):
+    return 0.5 * ((data - mu)**2).sum() / sigma**2
+
+result = minimize_scalar(neg_log_lik)
+print(f"MLE mu: {result.x:.4f}")   # ≈ 2.05 = data.mean() ✓
+print(f"Sample mean: {data.mean():.4f}")
+
+# For Gaussian, MLE for mu IS the sample mean
+# For Gaussian, MLE for sigma^2 IS the biased sample variance
+print(f"MLE sigma^2: {data.var(ddof=0):.4f}")
+</code></pre>
+</section>
+<section>
+<h2>Information Theory: Entropy and Cross-Entropy</h2>
+<pre><code class="language-python">import numpy as np
+
+def entropy(p, eps=1e-12):
+    """Shannon entropy H(p) = -sum(p * log(p))."""
+    p = np.array(p)
+    return -(p * np.log(p + eps)).sum()
+
+def cross_entropy(p_true, q_pred, eps=1e-12):
+    """H(p,q) = -sum(p * log(q)). Minimised when q=p."""
+    p_true = np.array(p_true)
+    q_pred = np.array(q_pred)
+    return -(p_true * np.log(q_pred + eps)).sum()
+
+def kl_divergence(p, q, eps=1e-12):
+    """KL(p||q) = H(p,q) - H(p) >= 0. Zero iff p=q."""
+    p, q = np.array(p), np.array(q)
+    return (p * np.log((p + eps) / (q + eps))).sum()
+
+# Uniform distribution has maximum entropy
+print(entropy([0.25, 0.25, 0.25, 0.25]))  # log(4) = 1.386
+print(entropy([1.0, 0.0, 0.0, 0.0]))      # 0.0 (no uncertainty)
+
+# Cross-entropy loss for a single prediction
+true_label = [0, 1, 0, 0]        # one-hot: class 1
+predicted   = [0.1, 0.7, 0.1, 0.1]  # model output (softmax)
+print(f"CE loss: {cross_entropy(true_label, predicted):.4f}")
+# = -log(0.7) ≈ 0.357
+</code></pre>
+</section>
+<section>
+<h2>Review Questions</h2>
+<div class="quiz-card" data-answer="C">
+<p><strong>Q1.</strong> Training a neural network with cross-entropy loss is equivalent to:</p>
+<label class="quiz-option"><input type="radio" name="q1" value="A"> Minimising the variance of predictions</label>
+<label class="quiz-option"><input type="radio" name="q1" value="B"> Maximising the prior probability of the weights</label>
+<label class="quiz-option"><input type="radio" name="q1" value="C"> Maximum likelihood estimation under a categorical likelihood</label>
+<label class="quiz-option"><input type="radio" name="q1" value="D"> Minimising KL divergence between weights and noise</label>
+<button class="btn check-quiz" style="margin-top:.5rem">Check answer</button>
+</div>
+<div class="quiz-card" data-answer="A">
+<p><strong>Q2.</strong> For a Gaussian distribution, what is the MLE estimate of the mean μ?</p>
+<label class="quiz-option"><input type="radio" name="q2" value="A"> The sample mean x̄ = (1/n)Σxᵢ</label>
+<label class="quiz-option"><input type="radio" name="q2" value="B"> The sample median</label>
+<label class="quiz-option"><input type="radio" name="q2" value="C"> The sample maximum</label>
+<label class="quiz-option"><input type="radio" name="q2" value="D"> Zero</label>
+<button class="btn check-quiz" style="margin-top:.5rem">Check answer</button>
+</div>
+</section>
+</article><aside><nav class="toc"><h2>Contents</h2><ol id="tocList"></ol></nav></aside></div><footer class="footer"><p>&copy; <span id="year"></span> MS Machine Learning Interactive Learning Platform.</p></footer></div></main></div><script src="../../assets/js/nav-data.js"></script><script src="../../assets/js/search-index.js"></script><script src="../../assets/js/glossary-data.js"></script><script src="../../assets/js/site.js"></script><script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script><script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script></body></html>

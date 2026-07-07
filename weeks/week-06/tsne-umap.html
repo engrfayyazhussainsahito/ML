@@ -1,0 +1,83 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Lesson 6.4: t-SNE and UMAP | MS Machine Learning</title><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link rel="stylesheet" href="../../assets/css/styles.css"><link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css"></head><body data-root="../../" data-page-id="week-06/lesson-6-4" data-title="Lesson 6.4: t-SNE and UMAP"><a class="skip-link" href="#main">Skip to main content</a><div class="progress" id="readingProgress"></div><div class="mobile-topbar"><button id="openSidebar">&#9776; Navigation</button><span style="font-family:var(--serif);font-weight:700;font-size:.95rem">MS Machine Learning</span><button class="theme-toggle">&#127769; Dark mode</button></div><div class="site-shell"><aside class="sidebar" id="sidebar"><div class="brand"><span class="brand-mark">ML</span><div><h1>Machine Learning</h1><small>Interactive Learning Platform</small></div></div><button id="closeSidebar" class="btn" style="margin:.25rem 0">&#10005; Close</button><div class="nav-search"><label for="navSearch">Search lessons</label><input id="navSearch" class="site-search-input" type="search" placeholder="Type to search&#8230;" autocomplete="off"><div class="mini-results search-results"></div></div><nav id="courseNav"></nav><section class="nav-group"><div class="nav-group-title">Your Progress</div><div id="progressList" class="progress-list small"></div></section></aside><main class="main" id="main"><div class="page-wrap"><nav class="breadcrumbs"><a href="../../index.html">Home</a><span>Week 6 · Unsupervised Learning</span></nav><section class="hero"><div class="eyebrow">Week 6 · Unsupervised Learning</div><h1 class="page-title">Lesson 6.4: t-SNE and UMAP</h1><div class="toolbar"><button id="bookmarkBtn" class="btn">&#9734; Bookmark</button><button id="completeBtn" class="btn">Mark complete</button><button id="quizModeBtn" class="btn">&#127919; Start quiz mode</button><button class="print-page btn">&#128424; Print</button><button class="theme-toggle btn">&#127769; Dark mode</button></div></section><div class="layout-article"><article class="article" id="articleBody"><section>
+<h2>Non-Linear Dimensionality Reduction</h2>
+<p>PCA is linear — it cannot capture curved manifolds. t-SNE and UMAP are non-linear methods designed for 2D/3D visualisation. They preserve local neighbourhood structure, revealing clusters that PCA misses. However, they are not suitable for preprocessing before classification — distances in t-SNE/UMAP space are not globally meaningful.</p>
+</section>
+<section>
+<h2>t-SNE: t-Distributed Stochastic Neighbour Embedding</h2>
+<pre><code class="language-python">from sklearn.manifold import TSNE
+from sklearn.datasets import load_digits
+from sklearn.preprocessing import StandardScaler
+import numpy as np
+
+digits = load_digits()
+X, y = digits.data, digits.target   # 1797 samples, 64 features, 10 classes
+
+X_scaled = StandardScaler().fit_transform(X)
+
+# For large datasets: first reduce with PCA, then t-SNE
+from sklearn.decomposition import PCA
+X_pca50 = PCA(n_components=50).fit_transform(X_scaled)
+
+tsne = TSNE(
+    n_components=2,
+    perplexity=30,       # ~number of effective nearest neighbours (5-50)
+    learning_rate='auto',
+    n_iter=1000,
+    random_state=42,
+    init='pca'           # pca init is more stable than random
+)
+X_2d = tsne.fit_transform(X_pca50)
+print(f"t-SNE output shape: {X_2d.shape}")   # (1797, 2)
+print(f"KL divergence: {tsne.kl_divergence_:.4f}")  # lower = better
+
+# Clusters in X_2d correspond to digit classes if separation is good
+</code></pre>
+</section>
+<section>
+<h2>UMAP: Uniform Manifold Approximation and Projection</h2>
+<p>UMAP (McInnes et al., 2018) is faster than t-SNE, scales to millions of points, and preserves more global structure. It is built on Riemannian geometry and topological data analysis. Unlike t-SNE, UMAP can be used for out-of-sample transformation.</p>
+<pre><code class="language-python">import umap   # pip install umap-learn
+import numpy as np
+
+reducer = umap.UMAP(
+    n_neighbors=15,       # local neighbourhood size (like t-SNE perplexity)
+    min_dist=0.1,         # how tightly to pack points in low-dim space
+    n_components=2,
+    metric='euclidean',
+    random_state=42
+)
+X_umap = reducer.fit_transform(X_pca50)
+print(f"UMAP output shape: {X_umap.shape}")
+
+# Out-of-sample transform (t-SNE cannot do this)
+X_new = np.random.randn(10, 50)
+X_new_umap = reducer.transform(X_new)   # works!
+</code></pre>
+</section>
+<section>
+<h2>Practical Guidelines</h2>
+<table>
+<thead><tr><th></th><th>t-SNE</th><th>UMAP</th></tr></thead>
+<tbody>
+<tr><td>Speed</td><td>Slow (O(n log n))</td><td>Fast (O(n^1.14))</td></tr>
+<tr><td>Global structure</td><td>Poor</td><td>Better</td></tr>
+<tr><td>Out-of-sample</td><td>No</td><td>Yes</td></tr>
+<tr><td>Hyperparameters</td><td>perplexity</td><td>n_neighbors, min_dist</td></tr>
+<tr><td>Reproducibility</td><td>random_state required</td><td>random_state required</td></tr>
+<tr><td>Best for</td><td>Dense cluster visualisation</td><td>General purpose, large datasets</td></tr>
+</tbody>
+</table>
+<div class="callout warning">Do not use t-SNE or UMAP embeddings as input features to a classifier — cluster distances are not globally consistent. Use PCA or autoencoders for that purpose.</div>
+</section>
+<section>
+<h2>Review Questions</h2>
+<div class="quiz-card" data-answer="B">
+<p><strong>Q1.</strong> What is the key limitation of t-SNE compared to UMAP?</p>
+<label class="quiz-option"><input type="radio" name="q1" value="A"> t-SNE produces worse visualisations</label>
+<label class="quiz-option"><input type="radio" name="q1" value="B"> t-SNE cannot transform new (out-of-sample) points without refitting the entire model</label>
+<label class="quiz-option"><input type="radio" name="q1" value="C"> t-SNE requires labelled data</label>
+<label class="quiz-option"><input type="radio" name="q1" value="D"> t-SNE only works in 3D</label>
+<button class="btn check-quiz" style="margin-top:.5rem">Check answer</button>
+</div>
+</section>
+</article><aside><nav class="toc"><h2>Contents</h2><ol id="tocList"></ol></nav></aside></div><footer class="footer"><p>&copy; <span id="year"></span> MS Machine Learning Interactive Learning Platform.</p></footer></div></main></div><script src="../../assets/js/nav-data.js"></script><script src="../../assets/js/search-index.js"></script><script src="../../assets/js/glossary-data.js"></script><script src="../../assets/js/site.js"></script><script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script><script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script></body></html>

@@ -1,0 +1,157 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Lesson 0.4: Calculus &amp; Gradients | MS Machine Learning</title><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link rel="stylesheet" href="../../assets/css/styles.css"><link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css"></head><body data-root="../../" data-page-id="week-00/lesson-0-4" data-title="Lesson 0.4: Calculus &amp; Gradients"><a class="skip-link" href="#main">Skip to main content</a><div class="progress" id="readingProgress"></div><div class="mobile-topbar"><button id="openSidebar">☰ Navigation</button><span style="font-family:var(--serif);font-weight:700;font-size:.95rem">MS Machine Learning</span><button class="theme-toggle">🌙 Dark mode</button></div><div class="site-shell"><aside class="sidebar" id="sidebar"><div class="brand"><span class="brand-mark">ML</span><div><h1>Machine Learning</h1><small>Interactive Learning Platform</small></div></div><button id="closeSidebar" class="btn" style="margin:.25rem 0">✕ Close</button><div class="nav-search"><label for="navSearch">Search lessons</label><input id="navSearch" class="site-search-input" type="search" placeholder="Type to search…" autocomplete="off"><div class="mini-results search-results"></div></div><nav id="courseNav"></nav><section class="nav-group"><div class="nav-group-title">Your Progress</div><div id="progressList" class="progress-list small"></div></section></aside><main class="main" id="main"><div class="page-wrap"><nav class="breadcrumbs"><a href="../../index.html">Home</a><span>Week 0 · Python &amp; Maths Primer</span></nav><section class="hero"><div class="eyebrow">Week 0 · Python &amp; Maths Primer</div><h1 class="page-title">Lesson 0.4: Calculus &amp; Gradients</h1><div class="toolbar"><button id="bookmarkBtn" class="btn">☆ Bookmark</button><button id="completeBtn" class="btn">Mark complete</button><button id="quizModeBtn" class="btn">🎯 Start quiz mode</button><button class="print-page btn">🖨 Print</button><button class="theme-toggle btn">🌙 Dark mode</button></div></section><div class="layout-article"><article class="article" id="articleBody"><section>
+<h2>Why Calculus for ML?</h2>
+<p>Training any ML model reduces to minimising a loss function L(θ) over parameters θ. The gradient ∇L tells us the direction and magnitude of steepest increase — we step opposite to it. This is gradient descent, and it underlies every training algorithm from linear regression to GPT-4.</p>
+<div class="callout">You do not need to derive every gradient by hand — PyTorch's autograd does it automatically. But you <em>must</em> understand what a gradient is, why the chain rule works, and what it means when a gradient vanishes or explodes.</div>
+</section>
+<section>
+<h2>Derivatives</h2>
+<p>The derivative f′(x) is the instantaneous rate of change — the slope of the tangent line at x:</p>
+<blockquote>f′(x) = lim<sub>h→0</sub> [f(x+h) − f(x)] / h</blockquote>
+<pre><code class="language-python">import numpy as np
+
+def numerical_deriv(f, x, h=1e-5):
+    """Central difference approximation — more accurate than forward diff."""
+    return (f(x + h) - f(x - h)) / (2 * h)
+
+f = lambda x: x**3 - 2*x**2 + x
+print(numerical_deriv(f, 2.0))   # 3x²-4x+1 at x=2: 12-8+1 = 5.0
+print(numerical_deriv(f, 0.5))   # 3(0.25)-4(0.5)+1 = 0.75-2+1 = -0.25
+</code></pre>
+<table>
+<thead><tr><th>f(x)</th><th>f′(x)</th><th>ML relevance</th></tr></thead>
+<tbody>
+<tr><td>xⁿ</td><td>n xⁿ⁻¹</td><td>Polynomial features</td></tr>
+<tr><td>eˣ</td><td>eˣ</td><td>Softmax, exponential families</td></tr>
+<tr><td>ln x</td><td>1/x</td><td>Log-likelihood, cross-entropy</td></tr>
+<tr><td>σ(x) = 1/(1+e⁻ˣ)</td><td>σ(x)(1−σ(x))</td><td>Sigmoid gradient</td></tr>
+<tr><td>max(0, x)</td><td>0 if x&lt;0, 1 if x&gt;0</td><td>ReLU gradient</td></tr>
+</tbody>
+</table>
+</section>
+<section>
+<h2>Partial Derivatives and the Gradient</h2>
+<p>For f(x₁, x₂, …, xₙ), the partial derivative ∂f/∂xᵢ measures how f changes as xᵢ varies while all other variables are held fixed. The <strong>gradient</strong> ∇f = [∂f/∂x₁, …, ∂f/∂xₙ] stacks all partial derivatives into a vector pointing in the direction of steepest increase.</p>
+<pre><code class="language-python">def gradient_numerical(f, x, h=1e-5):
+    """Gradient of f at vector x via central differences."""
+    grad = np.zeros_like(x, dtype=float)
+    for i in range(len(x)):
+        xp, xm = x.copy(), x.copy()
+        xp[i] += h; xm[i] -= h
+        grad[i] = (f(xp) - f(xm)) / (2*h)
+    return grad
+
+# f(x,y) = x² + 2y² ; gradient = [2x, 4y]
+f = lambda v: v[0]**2 + 2*v[1]**2
+x = np.array([3.0, 1.0])
+grad = gradient_numerical(f, x)
+print(grad)  # [6.0, 4.0]  (exact: [2·3, 4·1])
+
+# A gradient descent step
+lr = 0.1
+x_new = x - lr * grad
+print(x_new)  # [2.4, 0.6] — moved toward minimum at (0,0)
+</code></pre>
+</section>
+<section>
+<h2>The Chain Rule</h2>
+<p>Neural networks are compositions of functions: L = f₃(f₂(f₁(x; θ₁); θ₂); θ₃). The chain rule computes ∂L/∂θᵢ by multiplying local derivatives backwards through the composition:</p>
+<blockquote>dL/dx = (dL/db)·(db/da)·(da/dx)</blockquote>
+<pre><code class="language-python">import numpy as np
+
+x   = 2.0
+# Forward pass — save intermediate values
+a   = x ** 2           # a = x², da/dx = 2x = 4
+b   = np.exp(a)        # b = e^a, db/da = e^a = e^4 ≈ 54.6
+L   = (b - 100) ** 2  # L = (b-100)², dL/db = 2(b-100)
+
+# Backward pass — chain rule
+dL_db = 2 * (b - 100)
+db_da = np.exp(a)
+da_dx = 2 * x
+
+dL_dx = dL_db * db_da * da_dx
+print(f"dL/dx = {dL_dx:.2f}")
+
+# Numerical verification
+h = 1e-5
+f_plus  = (np.exp((x+h)**2) - 100)**2
+f_minus = (np.exp((x-h)**2) - 100)**2
+print(f"Numerical: {(f_plus - f_minus)/(2*h):.2f}")
+</code></pre>
+</section>
+<section>
+<h2>Automatic Differentiation (Autograd)</h2>
+<p>PyTorch builds a <strong>computation graph</strong> during the forward pass. Each operation records its inputs and the local derivative rule. <code>loss.backward()</code> traverses this graph in reverse, accumulating gradients via the chain rule into <code>.grad</code> attributes.</p>
+<pre><code class="language-python">import torch
+
+# Scalar example
+x = torch.tensor(2.0, requires_grad=True)
+y = torch.tensor(3.0, requires_grad=True)
+
+z = x**2 * y + torch.sin(y)  # z = x²y + sin(y)
+z.backward()
+
+# Analytical: dz/dx = 2xy = 12; dz/dy = x² + cos(y) = 4 + cos(3)
+print(f"dz/dx = {x.grad:.4f}")   # 12.0
+print(f"dz/dy = {y.grad:.4f}")   # 3.0100
+
+# Gradient of loss wrt all model parameters — same mechanism
+import torch.nn as nn
+model = nn.Linear(10, 1)
+x_in  = torch.randn(32, 10)
+y_out = torch.randn(32, 1)
+loss  = nn.MSELoss()(model(x_in), y_out)
+loss.backward()   # fills .grad for every parameter in model
+for name, p in model.named_parameters():
+    print(f"{name}: grad shape = {p.grad.shape}")
+</code></pre>
+</section>
+<section>
+<h2>Vanishing and Exploding Gradients</h2>
+<p>Deep networks can suffer from gradients that shrink (vanish) or grow (explode) exponentially as they propagate backwards through many layers. This prevents early layers from learning effectively.</p>
+<pre><code class="language-python">import torch
+import torch.nn as nn
+
+# Simulate gradient flow through 50 sigmoid layers
+x = torch.randn(1, 100, requires_grad=True)
+h = x
+for _ in range(50):
+    h = torch.sigmoid(h)   # sigmoid derivative max = 0.25 → shrinks gradient
+
+loss = h.sum()
+loss.backward()
+
+print(f"Max gradient magnitude: {x.grad.abs().max().item():.2e}")
+# Typically 1e-15 or smaller — effectively zero
+
+# ReLU helps: derivative is 1 for positive inputs
+x = torch.randn(1, 100, requires_grad=True)
+h = x
+for _ in range(50):
+    h = torch.relu(h)
+
+loss = h.sum()
+loss.backward()
+print(f"Max gradient (ReLU): {x.grad.abs().max().item():.4f}")
+</code></pre>
+</section>
+<section>
+<h2>Review Questions</h2>
+<div class="quiz-card" data-answer="D">
+<p><strong>Q1.</strong> If L = f(g(h(x))), the chain rule gives dL/dx as:</p>
+<label class="quiz-option"><input type="radio" name="q1" value="A"> f′(x) + g′(x) + h′(x)</label>
+<label class="quiz-option"><input type="radio" name="q1" value="B"> f′(g(h(x))) alone</label>
+<label class="quiz-option"><input type="radio" name="q1" value="C"> h′(x) · g′(x) only</label>
+<label class="quiz-option"><input type="radio" name="q1" value="D"> f′(g(h(x))) · g′(h(x)) · h′(x)</label>
+<button class="btn check-quiz" style="margin-top:.5rem">Check answer</button>
+</div>
+<div class="quiz-card" data-answer="B">
+<p><strong>Q2.</strong> Why does sigmoid activation cause vanishing gradients in deep networks?</p>
+<label class="quiz-option"><input type="radio" name="q2" value="A"> Sigmoid outputs values greater than 1</label>
+<label class="quiz-option"><input type="radio" name="q2" value="B"> Its derivative is at most 0.25, so gradients shrink exponentially through many layers</label>
+<label class="quiz-option"><input type="radio" name="q2" value="C"> Sigmoid is not differentiable</label>
+<label class="quiz-option"><input type="radio" name="q2" value="D"> Its gradient is always zero for negative inputs</label>
+<button class="btn check-quiz" style="margin-top:.5rem">Check answer</button>
+</div>
+</section>
+</article><aside><nav class="toc"><h2>Contents</h2><ol id="tocList"></ol></nav></aside></div><footer class="footer"><p>&copy; <span id="year"></span> MS Machine Learning Interactive Learning Platform.</p></footer></div></main></div><script src="../../assets/js/nav-data.js"></script><script src="../../assets/js/search-index.js"></script><script src="../../assets/js/glossary-data.js"></script><script src="../../assets/js/site.js"></script><script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script><script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script></body></html>

@@ -1,0 +1,117 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Lesson 1.3: The ML Workflow | MS Machine Learning</title><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link rel="stylesheet" href="../../assets/css/styles.css"><link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css"></head><body data-root="../../" data-page-id="week-01/lesson-1-3" data-title="Lesson 1.3: The ML Workflow"><a class="skip-link" href="#main">Skip to main content</a><div class="progress" id="readingProgress"></div><div class="mobile-topbar"><button id="openSidebar">&#9776; Navigation</button><span style="font-family:var(--serif);font-weight:700;font-size:.95rem">MS Machine Learning</span><button class="theme-toggle">&#127769; Dark mode</button></div><div class="site-shell"><aside class="sidebar" id="sidebar"><div class="brand"><span class="brand-mark">ML</span><div><h1>Machine Learning</h1><small>Interactive Learning Platform</small></div></div><button id="closeSidebar" class="btn" style="margin:.25rem 0">&#10005; Close</button><div class="nav-search"><label for="navSearch">Search lessons</label><input id="navSearch" class="site-search-input" type="search" placeholder="Type to search&#8230;" autocomplete="off"><div class="mini-results search-results"></div></div><nav id="courseNav"></nav><section class="nav-group"><div class="nav-group-title">Your Progress</div><div id="progressList" class="progress-list small"></div></section></aside><main class="main" id="main"><div class="page-wrap"><nav class="breadcrumbs"><a href="../../index.html">Home</a><span>Week 1 · What is Machine Learning?</span></nav><section class="hero"><div class="eyebrow">Week 1 · What is Machine Learning?</div><h1 class="page-title">Lesson 1.3: The ML Workflow</h1><div class="toolbar"><button id="bookmarkBtn" class="btn">&#9734; Bookmark</button><button id="completeBtn" class="btn">Mark complete</button><button id="quizModeBtn" class="btn">&#127919; Start quiz mode</button><button class="print-page btn">&#128424; Print</button><button class="theme-toggle btn">&#127769; Dark mode</button></div></section><div class="layout-article"><article class="article" id="articleBody"><section>
+<h2>The End-to-End Pipeline</h2>
+<p>A production ML project follows a repeatable workflow. Each stage has failure modes that propagate downstream — a bad problem framing or leaky train/test split corrupts every subsequent metric.</p>
+<div class="diagram"><pre class="mermaid">graph LR
+  A[Problem framing] --> B[Data collection]
+  B --> C[EDA and cleaning]
+  C --> D[Feature engineering]
+  D --> E[Modelling]
+  E --> F[Evaluation]
+  F --> G[Deployment]
+  G --> H[Monitoring]
+  H -->|drift detected| C
+</pre></div>
+</section>
+<section>
+<h2>Problem Framing</h2>
+<p>Before writing any code, answer these questions: What exactly is the prediction target? What is the cost of each type of error? Is the target measurable and available at training time but not at inference time (leakage risk)? Is ML even the right tool, or would a rule-based system suffice?</p>
+<div class="callout warning">Many failed ML projects stem from wrong problem formulations, not bad models. One extra day on framing saves weeks of wasted modelling effort.</div>
+<pre><code class="language-python"># Frame the problem concretely
+problem = {
+    "task":       "binary classification",
+    "target":     "customer churns within 30 days",
+    "features":   ["usage_days", "support_tickets", "plan_type", "tenure"],
+    "metric":     "F1-score (churn is rare; accuracy misleads)",
+    "baseline":   "majority class: F1 ≈ 0 on minority class",
+    "constraint": "prediction must be available 7 days before renewal"
+}
+</code></pre>
+</section>
+<section>
+<h2>Data Splitting</h2>
+<p>The test set must be held out completely and used only once. Using it iteratively inflates estimates through multiple comparison. The validation set is used to tune hyperparameters and compare model variants.</p>
+<pre><code class="language-python">from sklearn.model_selection import train_test_split
+import numpy as np
+
+X = np.random.randn(10000, 20)
+y = np.random.randint(0, 2, 10000)
+
+# 70% train, 15% validation, 15% test
+X_temp, X_test, y_temp, y_test = train_test_split(
+    X, y, test_size=0.15, stratify=y, random_state=42)
+X_train, X_val, y_train, y_val = train_test_split(
+    X_temp, y_temp, test_size=0.15/0.85, stratify=y_temp, random_state=42)
+
+print(f"Train: {len(X_train)}, Val: {len(X_val)}, Test: {len(X_test)}")
+
+# For time series: NEVER shuffle — use chronological order
+# train = data[:7000], val = data[7000:8500], test = data[8500:]
+</code></pre>
+</section>
+<section>
+<h2>Establishing a Baseline</h2>
+<p>Always build the simplest possible model first. Every subsequent model must beat the baseline to justify its complexity cost.</p>
+<pre><code class="language-python">from sklearn.dummy import DummyClassifier
+from sklearn.linear_model import LogisticRegression
+from sklearn.pipeline import make_pipeline
+from sklearn.preprocessing import StandardScaler
+from sklearn.metrics import f1_score
+
+# Baseline 1: always predict majority class
+dummy = DummyClassifier(strategy='most_frequent')
+dummy.fit(X_train, y_train)
+print(f"Dummy F1: {f1_score(y_val, dummy.predict(X_val)):.3f}")
+
+# Baseline 2: linear model with default settings
+lr = make_pipeline(StandardScaler(), LogisticRegression(max_iter=1000))
+lr.fit(X_train, y_train)
+print(f"LogReg F1: {f1_score(y_val, lr.predict(X_val)):.3f}")
+</code></pre>
+</section>
+<section>
+<h2>Iterative Improvement</h2>
+<pre><code class="language-python">from sklearn.ensemble import GradientBoostingClassifier, RandomForestClassifier
+from sklearn.model_selection import cross_val_score
+
+candidates = {
+    "LogReg":  make_pipeline(StandardScaler(), LogisticRegression()),
+    "RF":      RandomForestClassifier(n_estimators=100, random_state=42),
+    "GBM":     GradientBoostingClassifier(n_estimators=200, random_state=42),
+}
+
+for name, model in candidates.items():
+    scores = cross_val_score(model, X_train, y_train,
+                             cv=5, scoring='f1', n_jobs=-1)
+    print(f"{name}: {scores.mean():.3f} +/- {scores.std():.3f}")
+</code></pre>
+</section>
+<section>
+<h2>Final Evaluation with Confidence Intervals</h2>
+<pre><code class="language-python">from sklearn.metrics import classification_report
+from sklearn.utils import resample
+import numpy as np
+
+# Final fit on train+val, evaluate on test — exactly once
+best_model.fit(np.vstack([X_train, X_val]), np.concatenate([y_train, y_val]))
+y_pred = best_model.predict(X_test)
+print(classification_report(y_test, y_pred))
+
+# Bootstrap 95% CI for F1
+f1s = [f1_score(y_test[idx := resample(range(len(y_test)))], y_pred[idx])
+       for _ in range(1000)]
+lo, hi = np.percentile(f1s, [2.5, 97.5])
+print(f"F1 95% CI: [{lo:.3f}, {hi:.3f}]")
+</code></pre>
+</section>
+<section>
+<h2>Review Questions</h2>
+<div class="quiz-card" data-answer="D">
+<p><strong>Q1.</strong> Why must the test set never be used during model development?</p>
+<label class="quiz-option"><input type="radio" name="q1" value="A"> It is too small to be useful</label>
+<label class="quiz-option"><input type="radio" name="q1" value="B"> It contains missing values</label>
+<label class="quiz-option"><input type="radio" name="q1" value="C"> It is needed for training</label>
+<label class="quiz-option"><input type="radio" name="q1" value="D"> Repeated evaluation inflates performance estimates through multiple comparison bias</label>
+<button class="btn check-quiz" style="margin-top:.5rem">Check answer</button>
+</div>
+</section>
+</article><aside><nav class="toc"><h2>Contents</h2><ol id="tocList"></ol></nav></aside></div><footer class="footer"><p>&copy; <span id="year"></span> MS Machine Learning Interactive Learning Platform.</p></footer></div></main></div><script src="../../assets/js/nav-data.js"></script><script src="../../assets/js/search-index.js"></script><script src="../../assets/js/glossary-data.js"></script><script src="../../assets/js/site.js"></script><script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script><script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script></body></html>

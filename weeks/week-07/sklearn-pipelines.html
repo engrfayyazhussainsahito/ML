@@ -1,0 +1,127 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Lesson 7.4: scikit-learn Pipelines | MS Machine Learning</title><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link rel="stylesheet" href="../../assets/css/styles.css"><link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css"></head><body data-root="../../" data-page-id="week-07/lesson-7-4" data-title="Lesson 7.4: scikit-learn Pipelines"><a class="skip-link" href="#main">Skip to main content</a><div class="progress" id="readingProgress"></div><div class="mobile-topbar"><button id="openSidebar">&#9776; Navigation</button><span style="font-family:var(--serif);font-weight:700;font-size:.95rem">MS Machine Learning</span><button class="theme-toggle">&#127769; Dark mode</button></div><div class="site-shell"><aside class="sidebar" id="sidebar"><div class="brand"><span class="brand-mark">ML</span><div><h1>Machine Learning</h1><small>Interactive Learning Platform</small></div></div><button id="closeSidebar" class="btn" style="margin:.25rem 0">&#10005; Close</button><div class="nav-search"><label for="navSearch">Search lessons</label><input id="navSearch" class="site-search-input" type="search" placeholder="Type to search&#8230;" autocomplete="off"><div class="mini-results search-results"></div></div><nav id="courseNav"></nav><section class="nav-group"><div class="nav-group-title">Your Progress</div><div id="progressList" class="progress-list small"></div></section></aside><main class="main" id="main"><div class="page-wrap"><nav class="breadcrumbs"><a href="../../index.html">Home</a><span>Week 7 · Feature Engineering</span></nav><section class="hero"><div class="eyebrow">Week 7 · Feature Engineering</div><h1 class="page-title">Lesson 7.4: scikit-learn Pipelines</h1><div class="toolbar"><button id="bookmarkBtn" class="btn">&#9734; Bookmark</button><button id="completeBtn" class="btn">Mark complete</button><button id="quizModeBtn" class="btn">&#127919; Start quiz mode</button><button class="print-page btn">&#128424; Print</button><button class="theme-toggle btn">&#127769; Dark mode</button></div></section><div class="layout-article"><article class="article" id="articleBody"><section>
+<h2>Why Pipelines?</h2>
+<p>Without a Pipeline, applying preprocessing steps manually before cross-validation causes data leakage — the scaler, imputer, or encoder sees validation data during fit, inflating performance estimates. Pipeline chains all steps, automatically fitting on training folds only and transforming validation folds. It also makes deployment trivial: one object processes raw data end-to-end.</p>
+</section>
+<section>
+<h2>Basic Pipeline</h2>
+<pre><code class="language-python">from sklearn.pipeline import Pipeline
+from sklearn.preprocessing import StandardScaler
+from sklearn.impute import SimpleImputer
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.model_selection import cross_val_score
+import numpy as np
+
+X = np.random.randn(500, 10)
+X[np.random.rand(*X.shape) < 0.1] = np.nan   # add missing values
+y = np.random.randint(0, 2, 500)
+
+# Steps: (name, estimator) pairs
+pipe = Pipeline([
+    ('impute', SimpleImputer(strategy='median')),   # 1. fill missing
+    ('scale',  StandardScaler()),                   # 2. normalise
+    ('clf',    RandomForestClassifier(n_estimators=100, random_state=42))  # 3. model
+])
+
+# Cross-validation: imputer and scaler fit only on train folds
+scores = cross_val_score(pipe, X, y, cv=5, scoring='accuracy')
+print(f"CV accuracy: {scores.mean():.4f} +/- {scores.std():.4f}")
+
+# Fit on full training data, then predict
+pipe.fit(X, y)
+X_new = np.random.randn(5, 10)
+print(pipe.predict(X_new))
+
+# Access intermediate steps
+print(pipe.named_steps['scale'].mean_[:5])
+</code></pre>
+</section>
+<section>
+<h2>ColumnTransformer: Different Processing per Column</h2>
+<pre><code class="language-python">import pandas as pd
+import numpy as np
+from sklearn.compose import ColumnTransformer
+from sklearn.preprocessing import StandardScaler, OneHotEncoder
+from sklearn.impute import SimpleImputer
+from sklearn.pipeline import Pipeline
+from sklearn.ensemble import GradientBoostingClassifier
+from sklearn.model_selection import train_test_split
+
+df = pd.DataFrame({
+    'age':      [25, np.nan, 47, 29, 55, 33],
+    'income':   [50000, 72000, np.nan, 45000, 90000, 61000],
+    'city':     ['NYC', 'LA', 'NYC', 'SF', 'LA', 'NYC'],
+    'employed': [1, 1, 0, 1, 1, 0],
+    'default':  [0, 0, 1, 0, 0, 1]
+})
+
+num_cols = ['age', 'income']
+cat_cols = ['city']
+bin_cols = ['employed']
+target   = 'default'
+
+X = df.drop(columns=[target])
+y = df[target]
+
+# Numerical pipeline: impute then scale
+num_pipe = Pipeline([
+    ('impute', SimpleImputer(strategy='median')),
+    ('scale',  StandardScaler())
+])
+
+# Categorical pipeline: impute mode then one-hot
+cat_pipe = Pipeline([
+    ('impute', SimpleImputer(strategy='most_frequent')),
+    ('ohe',    OneHotEncoder(handle_unknown='ignore', sparse_output=False))
+])
+
+preprocessor = ColumnTransformer([
+    ('num', num_pipe, num_cols),
+    ('cat', cat_pipe, cat_cols),
+    ('bin', 'passthrough', bin_cols),
+])
+
+full_pipe = Pipeline([
+    ('preprocess', preprocessor),
+    ('clf', GradientBoostingClassifier(random_state=42))
+])
+
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.33)
+full_pipe.fit(X_train, y_train)
+print(f"Test accuracy: {full_pipe.score(X_test, y_test):.4f}")
+</code></pre>
+</section>
+<section>
+<h2>Hyperparameter Tuning Through a Pipeline</h2>
+<pre><code class="language-python">from sklearn.model_selection import RandomizedSearchCV
+from scipy.stats import randint, loguniform
+
+# Reference pipeline steps via double underscore
+param_distributions = {
+    'clf__n_estimators':     randint(50, 300),
+    'clf__learning_rate':    loguniform(1e-3, 0.3),
+    'clf__max_depth':        randint(2, 8),
+    'preprocess__num__scale': [StandardScaler(), 'passthrough'],
+}
+
+search = RandomizedSearchCV(
+    full_pipe, param_distributions,
+    n_iter=30, cv=5, scoring='accuracy',
+    random_state=42, n_jobs=-1
+)
+search.fit(X_train, y_train)
+print(f"Best params: {search.best_params_}")
+print(f"Best CV score: {search.best_score_:.4f}")
+</code></pre>
+</section>
+<section>
+<h2>Review Questions</h2>
+<div class="quiz-card" data-answer="A">
+<p><strong>Q1.</strong> What leakage problem does sklearn Pipeline prevent?</p>
+<label class="quiz-option"><input type="radio" name="q1" value="A"> It ensures preprocessing steps (scaler, imputer) are fitted only on training data, never on validation data</label>
+<label class="quiz-option"><input type="radio" name="q1" value="B"> It prevents the model from seeing the target variable</label>
+<label class="quiz-option"><input type="radio" name="q1" value="C"> It removes correlated features automatically</label>
+<label class="quiz-option"><input type="radio" name="q1" value="D"> It balances class weights</label>
+<button class="btn check-quiz" style="margin-top:.5rem">Check answer</button>
+</div>
+</section>
+</article><aside><nav class="toc"><h2>Contents</h2><ol id="tocList"></ol></nav></aside></div><footer class="footer"><p>&copy; <span id="year"></span> MS Machine Learning Interactive Learning Platform.</p></footer></div></main></div><script src="../../assets/js/nav-data.js"></script><script src="../../assets/js/search-index.js"></script><script src="../../assets/js/glossary-data.js"></script><script src="../../assets/js/site.js"></script><script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script><script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script></body></html>

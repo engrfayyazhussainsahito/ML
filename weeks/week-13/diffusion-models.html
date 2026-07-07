@@ -1,0 +1,132 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Lesson 13.3: Diffusion Models | MS Machine Learning</title><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link rel="stylesheet" href="../../assets/css/styles.css"><link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css"></head><body data-root="../../" data-page-id="week-13/lesson-13-3" data-title="Lesson 13.3: Diffusion Models"><a class="skip-link" href="#main">Skip to main content</a><div class="progress" id="readingProgress"></div><div class="mobile-topbar"><button id="openSidebar">&#9776; Navigation</button><span style="font-family:var(--serif);font-weight:700;font-size:.95rem">MS Machine Learning</span><button class="theme-toggle">&#127769; Dark mode</button></div><div class="site-shell"><aside class="sidebar" id="sidebar"><div class="brand"><span class="brand-mark">ML</span><div><h1>Machine Learning</h1><small>Interactive Learning Platform</small></div></div><button id="closeSidebar" class="btn" style="margin:.25rem 0">&#10005; Close</button><div class="nav-search"><label for="navSearch">Search lessons</label><input id="navSearch" class="site-search-input" type="search" placeholder="Type to search&#8230;" autocomplete="off"><div class="mini-results search-results"></div></div><nav id="courseNav"></nav><section class="nav-group"><div class="nav-group-title">Your Progress</div><div id="progressList" class="progress-list small"></div></section></aside><main class="main" id="main"><div class="page-wrap"><nav class="breadcrumbs"><a href="../../index.html">Home</a><span>Week 13 · Generative Models</span></nav><section class="hero"><div class="eyebrow">Week 13 · Generative Models</div><h1 class="page-title">Lesson 13.3: Diffusion Models</h1><div class="toolbar"><button id="bookmarkBtn" class="btn">&#9734; Bookmark</button><button id="completeBtn" class="btn">Mark complete</button><button id="quizModeBtn" class="btn">&#127919; Start quiz mode</button><button class="print-page btn">&#128424; Print</button><button class="theme-toggle btn">&#127769; Dark mode</button></div></section><div class="layout-article"><article class="article" id="articleBody"><section>
+<h2>The Diffusion Principle</h2>
+<p>Diffusion models (Ho et al., 2020) are inspired by non-equilibrium thermodynamics. The <strong>forward process</strong> gradually adds Gaussian noise to data over T timesteps until it becomes pure noise. The model learns the <strong>reverse process</strong>: given noisy data at step t, predict the noise that was added, then remove it. At inference, start from pure noise and iteratively denoise.</p>
+</section>
+<section>
+<h2>The Forward Process</h2>
+<pre><code class="language-python">import torch
+import numpy as np
+
+# Noise schedule: how much noise is added at each timestep
+T = 1000
+beta_start, beta_end = 1e-4, 0.02
+betas = torch.linspace(beta_start, beta_end, T)   # linear schedule
+
+# Precompute cumulative products (used for efficient training)
+alphas      = 1 - betas
+alpha_bars  = torch.cumprod(alphas, dim=0)
+sqrt_ab     = torch.sqrt(alpha_bars)
+sqrt_1m_ab  = torch.sqrt(1 - alpha_bars)
+
+def add_noise(x0, t, noise=None):
+    """
+    Forward process: q(x_t | x_0) = N(sqrt(alpha_bar_t)*x0, (1-alpha_bar_t)*I)
+    Equivalent to: x_t = sqrt(ab_t)*x0 + sqrt(1-ab_t)*epsilon
+    """
+    if noise is None:
+        noise = torch.randn_like(x0)
+    sqrt_ab_t   = sqrt_ab[t].view(-1, *([1]*len(x0.shape[1:])))
+    sqrt_1m_t   = sqrt_1m_ab[t].view(-1, *([1]*len(x0.shape[1:])))
+    x_t = sqrt_ab_t * x0 + sqrt_1m_t * noise
+    return x_t, noise   # return both x_t and the actual noise epsilon
+
+# Example
+x0 = torch.randn(4, 1, 28, 28)   # clean images
+t  = torch.randint(0, T, (4,))
+
+x_t, true_noise = add_noise(x0, t)
+print(f"Noisy image at t={t}: {x_t.shape}")
+
+# At t=0: x_t ≈ x0  (very little noise)
+# At t=T: x_t ≈ N(0,I) (almost pure noise)
+print(f"t=0  signal ratio: {sqrt_ab[0]:.3f}")
+print(f"t=499 signal ratio: {sqrt_ab[499]:.3f}")
+print(f"t=999 signal ratio: {sqrt_ab[999]:.4f}")
+</code></pre>
+</section>
+<section>
+<h2>The U-Net Denoiser</h2>
+<pre><code class="language-python">import torch, torch.nn as nn
+
+class SinusoidalTimeEmbedding(nn.Module):
+    """Encode timestep t as a sinusoidal positional embedding."""
+    def __init__(self, dim):
+        super().__init__()
+        self.dim = dim
+
+    def forward(self, t):
+        half = self.dim // 2
+        freqs = torch.exp(-torch.arange(half, device=t.device) *
+                          (np.log(10000) / (half - 1)))
+        emb = t[:, None].float() * freqs[None]
+        return torch.cat([emb.sin(), emb.cos()], dim=-1)
+
+class ResBlock(nn.Module):
+    """Residual block conditioned on time embedding."""
+    def __init__(self, in_ch, out_ch, time_dim):
+        super().__init__()
+        self.conv1 = nn.Sequential(nn.GroupNorm(8, in_ch), nn.SiLU(),
+                                   nn.Conv2d(in_ch, out_ch, 3, padding=1))
+        self.time_mlp = nn.Sequential(nn.SiLU(), nn.Linear(time_dim, out_ch))
+        self.conv2 = nn.Sequential(nn.GroupNorm(8, out_ch), nn.SiLU(),
+                                   nn.Conv2d(out_ch, out_ch, 3, padding=1))
+        self.shortcut = nn.Conv2d(in_ch, out_ch, 1) if in_ch != out_ch else nn.Identity()
+
+    def forward(self, x, t_emb):
+        h = self.conv1(x)
+        h = h + self.time_mlp(t_emb)[:, :, None, None]
+        h = self.conv2(h)
+        return h + self.shortcut(x)
+
+# Full U-Net would add skip connections between encoder and decoder
+# The model learns: epsilon_theta(x_t, t) ≈ true noise epsilon
+</code></pre>
+</section>
+<section>
+<h2>Training and Sampling</h2>
+<pre><code class="language-python">def train_step(model, x0, optimiser):
+    """Simplified DDPM training step."""
+    t = torch.randint(0, T, (x0.size(0),))
+    x_t, noise = add_noise(x0, t)
+
+    # Model predicts the noise
+    predicted_noise = model(x_t, t)
+    loss = nn.MSELoss()(predicted_noise, noise)
+
+    optimiser.zero_grad(); loss.backward(); optimiser.step()
+    return loss.item()
+
+def ddpm_sample(model, shape, device='cpu'):
+    """DDPM reverse process: start from noise, iteratively denoise."""
+    x = torch.randn(shape, device=device)   # start from pure noise
+
+    for t in reversed(range(T)):
+        t_batch = torch.full((shape[0],), t, device=device, dtype=torch.long)
+        predicted_noise = model(x, t_batch)
+
+        alpha_t    = alphas[t]
+        alpha_bar_t = alpha_bars[t]
+        beta_t     = betas[t]
+
+        # Reverse step: remove predicted noise
+        x = (1 / torch.sqrt(alpha_t)) * (
+            x - (beta_t / torch.sqrt(1 - alpha_bar_t)) * predicted_noise
+        )
+        if t > 0:
+            x += torch.sqrt(beta_t) * torch.randn_like(x)
+
+    return x.clamp(-1, 1)
+</code></pre>
+</section>
+<section>
+<h2>Review Questions</h2>
+<div class="quiz-card" data-answer="D">
+<p><strong>Q1.</strong> What does a diffusion model's neural network actually learn to predict?</p>
+<label class="quiz-option"><input type="radio" name="q1" value="A"> The clean image x0 directly from noise</label>
+<label class="quiz-option"><input type="radio" name="q1" value="B"> The discriminator score for each sample</label>
+<label class="quiz-option"><input type="radio" name="q1" value="C"> The latent code in a VAE-like space</label>
+<label class="quiz-option"><input type="radio" name="q1" value="D"> The noise that was added at timestep t — allowing it to be subtracted during the reverse process</label>
+<button class="btn check-quiz" style="margin-top:.5rem">Check answer</button>
+</div>
+</section>
+</article><aside><nav class="toc"><h2>Contents</h2><ol id="tocList"></ol></nav></aside></div><footer class="footer"><p>&copy; <span id="year"></span> MS Machine Learning Interactive Learning Platform.</p></footer></div></main></div><script src="../../assets/js/nav-data.js"></script><script src="../../assets/js/search-index.js"></script><script src="../../assets/js/glossary-data.js"></script><script src="../../assets/js/site.js"></script><script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script><script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script></body></html>

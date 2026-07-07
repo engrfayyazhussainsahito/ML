@@ -1,0 +1,133 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Lesson 14.2: Explainability and Interpretability | MS Machine Learning</title><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link rel="stylesheet" href="../../assets/css/styles.css"><link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css"></head><body data-root="../../" data-page-id="week-14/lesson-14-2" data-title="Lesson 14.2: Explainability and Interpretability"><a class="skip-link" href="#main">Skip to main content</a><div class="progress" id="readingProgress"></div><div class="mobile-topbar"><button id="openSidebar">&#9776; Navigation</button><span style="font-family:var(--serif);font-weight:700;font-size:.95rem">MS Machine Learning</span><button class="theme-toggle">&#127769; Dark mode</button></div><div class="site-shell"><aside class="sidebar" id="sidebar"><div class="brand"><span class="brand-mark">ML</span><div><h1>Machine Learning</h1><small>Interactive Learning Platform</small></div></div><button id="closeSidebar" class="btn" style="margin:.25rem 0">&#10005; Close</button><div class="nav-search"><label for="navSearch">Search lessons</label><input id="navSearch" class="site-search-input" type="search" placeholder="Type to search&#8230;" autocomplete="off"><div class="mini-results search-results"></div></div><nav id="courseNav"></nav><section class="nav-group"><div class="nav-group-title">Your Progress</div><div id="progressList" class="progress-list small"></div></section></aside><main class="main" id="main"><div class="page-wrap"><nav class="breadcrumbs"><a href="../../index.html">Home</a><span>Week 14 · Responsible AI</span></nav><section class="hero"><div class="eyebrow">Week 14 · Responsible AI</div><h1 class="page-title">Lesson 14.2: Explainability and Interpretability</h1><div class="toolbar"><button id="bookmarkBtn" class="btn">&#9734; Bookmark</button><button id="completeBtn" class="btn">Mark complete</button><button id="quizModeBtn" class="btn">&#127919; Start quiz mode</button><button class="print-page btn">&#128424; Print</button><button class="theme-toggle btn">&#127769; Dark mode</button></div></section><div class="layout-article"><article class="article" id="articleBody"><section>
+<h2>Why Explainability?</h2>
+<p>A model achieving 97% accuracy is useless in practice if its decisions cannot be justified. Explainability is required by law (GDPR Article 22 grants a right to explanation for automated decisions), by safety (medical/legal AI must be auditable), and by science (understanding what models learn validates or challenges hypotheses). Black boxes breed liability.</p>
+</section>
+<section>
+<h2>SHAP: SHapley Additive exPlanations</h2>
+<pre><code class="language-python">import shap
+import numpy as np
+from sklearn.ensemble import GradientBoostingClassifier
+from sklearn.datasets import load_breast_cancer
+from sklearn.model_selection import train_test_split
+
+data = load_breast_cancer()
+X, y = data.data, data.target
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+
+model = GradientBoostingClassifier(n_estimators=200, random_state=42)
+model.fit(X_train, y_train)
+
+# Tree SHAP: exact Shapley values for tree-based models
+explainer    = shap.TreeExplainer(model)
+shap_values  = explainer.shap_values(X_test)   # (n_test, n_features)
+
+# Global importance: mean |SHAP| per feature
+mean_shap = np.abs(shap_values).mean(axis=0)
+ranking   = np.argsort(mean_shap)[::-1]
+
+print("Top 5 features by global SHAP importance:")
+for i in range(5):
+    j = ranking[i]
+    print(f"  {data.feature_names[j]}: {mean_shap[j]:.4f}")
+
+# Local explanation: why did the model predict sample 0?
+print(f"\nPrediction for sample 0: {model.predict_proba(X_test[[0]])[0]}")
+print("SHAP contributions:")
+for j in np.argsort(np.abs(shap_values[0]))[::-1][:5]:
+    print(f"  {data.feature_names[j]:30s}: SHAP={shap_values[0,j]:+.4f}, value={X_test[0,j]:.3f}")
+</code></pre>
+</section>
+<section>
+<h2>LIME: Local Interpretable Model-agnostic Explanations</h2>
+<pre><code class="language-python">import lime, lime.lime_tabular
+import numpy as np
+
+# LIME approximates the model locally with an interpretable linear model
+explainer = lime.lime_tabular.LimeTabularExplainer(
+    X_train,
+    feature_names=data.feature_names,
+    class_names=data.target_names,
+    mode='classification',
+    discretize_continuous=True
+)
+
+# Explain a single prediction
+explanation = explainer.explain_instance(
+    X_test[0],
+    model.predict_proba,
+    num_features=10,
+    num_samples=5000
+)
+
+print("LIME explanation for sample 0:")
+for feature, weight in explanation.as_list():
+    print(f"  {feature}: {weight:+.4f}")
+
+# LIME is model-agnostic (works for any black box) but
+# SHAP is preferred for tree models (exact, not approximation)
+</code></pre>
+</section>
+<section>
+<h2>Attention Visualisation for Transformers</h2>
+<pre><code class="language-python">from transformers import BertTokenizer, BertModel
+import torch
+
+tokeniser = BertTokenizer.from_pretrained('bert-base-uncased')
+model = BertModel.from_pretrained('bert-base-uncased', output_attentions=True)
+model.eval()
+
+text = "The dog chased the cat because it was hungry."
+inputs = tokeniser(text, return_tensors='pt')
+tokens = tokeniser.convert_ids_to_tokens(inputs['input_ids'][0])
+
+with torch.no_grad():
+    outputs = model(**inputs)
+
+attentions = outputs.attentions   # list of (1, n_heads, seq, seq) per layer
+n_layers, n_heads = len(attentions), attentions[0].size(1)
+print(f"Layers: {n_layers}, Heads per layer: {n_heads}")
+
+# Inspect attention from "it" to other tokens (coreference)
+it_idx = tokens.index('it')
+last_layer_avg = attentions[-1][0].mean(dim=0)   # average over heads
+attn_from_it = last_layer_avg[it_idx]
+
+print(f"\nAttention from 'it' (last layer, avg heads):")
+for tok, attn in zip(tokens, attn_from_it):
+    if attn > 0.05:
+        print(f"  {tok:15s}: {attn:.3f}")
+</code></pre>
+</section>
+<section>
+<h2>Model Cards and Datasheets</h2>
+<p>Documentation is a form of explainability. Model cards (Mitchell et al., 2019) are structured documents that report model intended use, evaluation results across demographic groups, limitations, and ethical considerations. Datasheets for datasets document data collection, composition, and recommended uses. Both are mandatory for responsible deployment.</p>
+<pre><code class="language-python">model_card = {
+    "model_name": "Loan Default Classifier v2.1",
+    "intended_use": "Predict default risk for personal loan applications",
+    "out_of_scope": "Not validated for business loans or mortgages",
+    "training_data": "500k applications 2015-2022, US only",
+    "evaluation_results": {
+        "overall_AUC": 0.832,
+        "AUC_by_age": {"18-25": 0.791, "26-45": 0.848, "46+": 0.819},
+        "AUC_by_gender": {"M": 0.836, "F": 0.828},
+    },
+    "limitations": [
+        "Performance degrades on applicants with <2 years credit history",
+        "Not validated for post-2022 economic conditions",
+    ],
+    "ethical_considerations": "Reviewed for disparate impact under ECOA"
+}
+</code></pre>
+</section>
+<section>
+<h2>Review Questions</h2>
+<div class="quiz-card" data-answer="C">
+<p><strong>Q1.</strong> What is the key theoretical guarantee that makes SHAP values preferred over simpler feature importance measures?</p>
+<label class="quiz-option"><input type="radio" name="q1" value="A"> SHAP values sum to 1</label>
+<label class="quiz-option"><input type="radio" name="q1" value="B"> SHAP is always faster than LIME</label>
+<label class="quiz-option"><input type="radio" name="q1" value="C"> SHAP values are the unique attribution satisfying efficiency, symmetry, dummy, and additivity axioms from cooperative game theory</label>
+<label class="quiz-option"><input type="radio" name="q1" value="D"> SHAP works only for tree-based models</label>
+<button class="btn check-quiz" style="margin-top:.5rem">Check answer</button>
+</div>
+</section>
+</article><aside><nav class="toc"><h2>Contents</h2><ol id="tocList"></ol></nav></aside></div><footer class="footer"><p>&copy; <span id="year"></span> MS Machine Learning Interactive Learning Platform.</p></footer></div></main></div><script src="../../assets/js/nav-data.js"></script><script src="../../assets/js/search-index.js"></script><script src="../../assets/js/glossary-data.js"></script><script src="../../assets/js/site.js"></script><script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script><script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script></body></html>

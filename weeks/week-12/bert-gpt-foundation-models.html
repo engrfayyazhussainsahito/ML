@@ -1,0 +1,106 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Lesson 12.3: BERT, GPT and Foundation Models | MS Machine Learning</title><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link rel="stylesheet" href="../../assets/css/styles.css"><link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css"></head><body data-root="../../" data-page-id="week-12/lesson-12-3" data-title="Lesson 12.3: BERT, GPT and Foundation Models"><a class="skip-link" href="#main">Skip to main content</a><div class="progress" id="readingProgress"></div><div class="mobile-topbar"><button id="openSidebar">&#9776; Navigation</button><span style="font-family:var(--serif);font-weight:700;font-size:.95rem">MS Machine Learning</span><button class="theme-toggle">&#127769; Dark mode</button></div><div class="site-shell"><aside class="sidebar" id="sidebar"><div class="brand"><span class="brand-mark">ML</span><div><h1>Machine Learning</h1><small>Interactive Learning Platform</small></div></div><button id="closeSidebar" class="btn" style="margin:.25rem 0">&#10005; Close</button><div class="nav-search"><label for="navSearch">Search lessons</label><input id="navSearch" class="site-search-input" type="search" placeholder="Type to search&#8230;" autocomplete="off"><div class="mini-results search-results"></div></div><nav id="courseNav"></nav><section class="nav-group"><div class="nav-group-title">Your Progress</div><div id="progressList" class="progress-list small"></div></section></aside><main class="main" id="main"><div class="page-wrap"><nav class="breadcrumbs"><a href="../../index.html">Home</a><span>Week 12 · Transformers</span></nav><section class="hero"><div class="eyebrow">Week 12 · Transformers</div><h1 class="page-title">Lesson 12.3: BERT, GPT and Foundation Models</h1><div class="toolbar"><button id="bookmarkBtn" class="btn">&#9734; Bookmark</button><button id="completeBtn" class="btn">Mark complete</button><button id="quizModeBtn" class="btn">&#127919; Start quiz mode</button><button class="print-page btn">&#128424; Print</button><button class="theme-toggle btn">&#127769; Dark mode</button></div></section><div class="layout-article"><article class="article" id="articleBody"><section>
+<h2>Pre-training Objectives</h2>
+<p>Large language models are pre-trained on massive text corpora with self-supervised objectives — the labels are derived from the data itself, requiring no human annotation. The objective shapes what the model learns: BERT learns bidirectional context; GPT learns autoregressive prediction.</p>
+</section>
+<section>
+<h2>BERT: Masked Language Modelling</h2>
+<pre><code class="language-python">from transformers import BertTokenizer, BertForMaskedLM
+import torch
+
+tokeniser = BertTokenizer.from_pretrained('bert-base-uncased')
+model = BertForMaskedLM.from_pretrained('bert-base-uncased')
+model.eval()
+
+text = "The capital of France is [MASK]."
+inputs = tokeniser(text, return_tensors='pt')
+mask_idx = (inputs['input_ids'] == tokeniser.mask_token_id).nonzero()[0, 1]
+
+with torch.no_grad():
+    logits = model(**inputs).logits
+
+# Top-5 predictions for the masked token
+top_tokens = logits[0, mask_idx].topk(5)
+for score, idx in zip(top_tokens.values, top_tokens.indices):
+    print(f"  {tokeniser.decode([idx]):15s}: {score:.2f}")
+# Expected: 'paris', 'lyon', etc.
+</code></pre>
+</section>
+<section>
+<h2>GPT: Causal Language Modelling</h2>
+<pre><code class="language-python">from transformers import GPT2LMHeadModel, GPT2Tokenizer
+import torch
+
+tokeniser = GPT2Tokenizer.from_pretrained('gpt2')
+model = GPT2LMHeadModel.from_pretrained('gpt2')
+model.eval()
+
+prompt = "Machine learning is the study of"
+inputs = tokeniser.encode(prompt, return_tensors='pt')
+
+with torch.no_grad():
+    # Generate 30 new tokens
+    output = model.generate(
+        inputs,
+        max_new_tokens=30,
+        do_sample=True,
+        temperature=0.8,          # higher = more random
+        top_p=0.9,                # nucleus sampling
+        repetition_penalty=1.2,
+        pad_token_id=tokeniser.eos_token_id
+    )
+
+generated = tokeniser.decode(output[0], skip_special_tokens=True)
+print(generated)
+</code></pre>
+</section>
+<section>
+<h2>BERT vs GPT Architecture Comparison</h2>
+<table>
+<thead><tr><th></th><th>BERT</th><th>GPT</th></tr></thead>
+<tbody>
+<tr><td>Attention</td><td>Bidirectional (all tokens attend to all)</td><td>Causal/autoregressive (attend only to past)</td></tr>
+<tr><td>Pre-training</td><td>Masked LM + Next Sentence Prediction</td><td>Next token prediction</td></tr>
+<tr><td>Architecture</td><td>Encoder only</td><td>Decoder only</td></tr>
+<tr><td>Best for</td><td>Classification, NER, QA (understanding)</td><td>Generation, completion (generation)</td></tr>
+<tr><td>Prompt format</td><td>[CLS] text [SEP]</td><td>text</td></tr>
+</tbody>
+</table>
+</section>
+<section>
+<h2>BERT for Classification (Fine-tuning)</h2>
+<pre><code class="language-python">from transformers import BertForSequenceClassification, BertTokenizer
+from torch.optim import AdamW
+import torch
+
+model = BertForSequenceClassification.from_pretrained(
+    'bert-base-uncased', num_labels=2)
+tokeniser = BertTokenizer.from_pretrained('bert-base-uncased')
+
+texts  = ["I loved this movie!", "Terrible waste of time."]
+labels = torch.tensor([1, 0])
+
+inputs = tokeniser(texts, padding=True, truncation=True,
+                   max_length=128, return_tensors='pt')
+
+optimiser = AdamW(model.parameters(), lr=2e-5)
+for step in range(3):
+    optimiser.zero_grad()
+    outputs = model(**inputs, labels=labels)
+    outputs.loss.backward()
+    torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+    optimiser.step()
+    print(f"Step {step+1}: loss={outputs.loss.item():.4f}")
+</code></pre>
+</section>
+<section>
+<h2>Review Questions</h2>
+<div class="quiz-card" data-answer="A">
+<p><strong>Q1.</strong> Why is BERT unsuitable for text generation tasks but GPT is?</p>
+<label class="quiz-option"><input type="radio" name="q1" value="A"> BERT uses bidirectional attention — it can "see" future tokens — which prevents autoregressive generation where future tokens must be unknown</label>
+<label class="quiz-option"><input type="radio" name="q1" value="B"> BERT is too small for generation</label>
+<label class="quiz-option"><input type="radio" name="q1" value="C"> BERT does not support tokenisation</label>
+<label class="quiz-option"><input type="radio" name="q1" value="D"> GPT uses masked language modelling</label>
+<button class="btn check-quiz" style="margin-top:.5rem">Check answer</button>
+</div>
+</section>
+</article><aside><nav class="toc"><h2>Contents</h2><ol id="tocList"></ol></nav></aside></div><footer class="footer"><p>&copy; <span id="year"></span> MS Machine Learning Interactive Learning Platform.</p></footer></div></main></div><script src="../../assets/js/nav-data.js"></script><script src="../../assets/js/search-index.js"></script><script src="../../assets/js/glossary-data.js"></script><script src="../../assets/js/site.js"></script><script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script><script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script></body></html>

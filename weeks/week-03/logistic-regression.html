@@ -1,0 +1,137 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Lesson 3.1: Logistic Regression | MS Machine Learning</title><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link rel="stylesheet" href="../../assets/css/styles.css"><link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css"></head><body data-root="../../" data-page-id="week-03/lesson-3-1" data-title="Lesson 3.1: Logistic Regression"><a class="skip-link" href="#main">Skip to main content</a><div class="progress" id="readingProgress"></div><div class="mobile-topbar"><button id="openSidebar">&#9776; Navigation</button><span style="font-family:var(--serif);font-weight:700;font-size:.95rem">MS Machine Learning</span><button class="theme-toggle">&#127769; Dark mode</button></div><div class="site-shell"><aside class="sidebar" id="sidebar"><div class="brand"><span class="brand-mark">ML</span><div><h1>Machine Learning</h1><small>Interactive Learning Platform</small></div></div><button id="closeSidebar" class="btn" style="margin:.25rem 0">&#10005; Close</button><div class="nav-search"><label for="navSearch">Search lessons</label><input id="navSearch" class="site-search-input" type="search" placeholder="Type to search&#8230;" autocomplete="off"><div class="mini-results search-results"></div></div><nav id="courseNav"></nav><section class="nav-group"><div class="nav-group-title">Your Progress</div><div id="progressList" class="progress-list small"></div></section></aside><main class="main" id="main"><div class="page-wrap"><nav class="breadcrumbs"><a href="../../index.html">Home</a><span>Week 3 · Classification</span></nav><section class="hero"><div class="eyebrow">Week 3 · Classification</div><h1 class="page-title">Lesson 3.1: Logistic Regression</h1><div class="toolbar"><button id="bookmarkBtn" class="btn">&#9734; Bookmark</button><button id="completeBtn" class="btn">Mark complete</button><button id="quizModeBtn" class="btn">&#127919; Start quiz mode</button><button class="print-page btn">&#128424; Print</button><button class="theme-toggle btn">&#127769; Dark mode</button></div></section><div class="layout-article"><article class="article" id="articleBody"><section>
+<h2>From Regression to Classification</h2>
+<p>Linear regression outputs any real number — unsuitable for probabilities, which must lie in [0,1]. Logistic regression applies the sigmoid function to a linear combination of features, producing a calibrated probability estimate. Despite the name, logistic regression is a classification algorithm.</p>
+<pre><code class="language-python">import numpy as np
+
+def sigmoid(z):
+    """Numerically stable sigmoid: sigma(z) = 1 / (1 + e^(-z))"""
+    return np.where(z >= 0,
+                    1 / (1 + np.exp(-z)),
+                    np.exp(z) / (1 + np.exp(z)))
+
+z = np.array([-10, -2, 0, 2, 10])
+print(sigmoid(z))
+# [4.5e-05, 0.119, 0.500, 0.881, 1.000]
+# z=0 -> P=0.5 (decision boundary)
+</code></pre>
+</section>
+<section>
+<h2>The Log-Loss (Binary Cross-Entropy)</h2>
+<p>We train logistic regression by maximising the log-likelihood, equivalently minimising the binary cross-entropy loss:</p>
+<blockquote>L(w) = -(1/n) Σᵢ [yᵢ log(p̂ᵢ) + (1-yᵢ) log(1-p̂ᵢ)]</blockquote>
+<p>This loss has no closed form — we minimise it with gradient descent. The gradient is beautifully simple: ∂L/∂w = (1/n) Xᵀ(p̂ - y).</p>
+<pre><code class="language-python">import numpy as np
+
+def logistic_loss_and_grad(X, y, w, lam=0.0):
+    """
+    Binary cross-entropy + L2 regularisation.
+    X: (n, p+1) with bias column; y: (n,); w: (p+1,)
+    """
+    n = len(y)
+    p_hat = sigmoid(X @ w)
+    # Clip to avoid log(0)
+    p_hat = np.clip(p_hat, 1e-12, 1-1e-12)
+    loss = -(y * np.log(p_hat) + (1-y) * np.log(1-p_hat)).mean()
+    loss += 0.5 * lam * (w[1:]**2).sum()  # don't regularise bias
+
+    grad = X.T @ (p_hat - y) / n
+    grad[1:] += lam * w[1:]
+    return loss, grad
+
+def fit_logistic(X, y, lr=0.1, epochs=1000, lam=0.01):
+    X_b = np.column_stack([np.ones(len(X)), X])
+    w = np.zeros(X_b.shape[1])
+    for epoch in range(epochs):
+        loss, grad = logistic_loss_and_grad(X_b, y, w, lam)
+        w -= lr * grad
+        if epoch % 200 == 0:
+            print(f"Epoch {epoch}: loss={loss:.4f}")
+    return w
+</code></pre>
+</section>
+<section>
+<h2>scikit-learn and the Decision Boundary</h2>
+<pre><code class="language-python">from sklearn.linear_model import LogisticRegression
+from sklearn.datasets import make_classification
+from sklearn.preprocessing import StandardScaler
+from sklearn.pipeline import make_pipeline
+from sklearn.metrics import roc_auc_score
+import numpy as np
+
+X, y = make_classification(n_samples=1000, n_features=2,
+                            n_informative=2, n_redundant=0,
+                            random_state=42)
+
+# C = 1/lambda: higher C = less regularisation
+pipe = make_pipeline(
+    StandardScaler(),
+    LogisticRegression(C=1.0, solver='lbfgs', max_iter=1000)
+)
+pipe.fit(X, y)
+
+# Probability outputs
+proba = pipe.predict_proba(X)[:, 1]
+print(f"ROC-AUC: {roc_auc_score(y, proba):.3f}")
+
+# Predicted class at threshold 0.5
+y_pred = (proba >= 0.5).astype(int)
+print(f"Accuracy: {(y_pred == y).mean():.3f}")
+</code></pre>
+</section>
+<section>
+<h2>Multi-class: Softmax</h2>
+<p>For K classes, we replace sigmoid with softmax. Softmax converts K raw scores (logits) into a probability distribution over classes:</p>
+<blockquote>P(y=k|x) = exp(wₖᵀx) / Σⱼ exp(wⱼᵀx)</blockquote>
+<pre><code class="language-python">import numpy as np
+
+def softmax(logits):
+    """Numerically stable softmax."""
+    z = logits - logits.max(axis=-1, keepdims=True)  # subtract max for stability
+    exp_z = np.exp(z)
+    return exp_z / exp_z.sum(axis=-1, keepdims=True)
+
+logits = np.array([[1.0, 2.0, 0.5, -1.0]])   # 4 classes
+probs = softmax(logits)
+print(probs)
+print(probs.sum())   # 1.0
+
+# sklearn multi-class logistic regression
+from sklearn.linear_model import LogisticRegression
+from sklearn.datasets import load_iris
+
+X_iris, y_iris = load_iris(return_X_y=True)
+lr_multi = LogisticRegression(multi_class='multinomial', max_iter=1000)
+lr_multi.fit(X_iris, y_iris)
+print(f"3-class accuracy: {lr_multi.score(X_iris, y_iris):.3f}")
+</code></pre>
+</section>
+<section>
+<h2>Threshold Selection</h2>
+<pre><code class="language-python">from sklearn.metrics import precision_recall_curve, f1_score
+import numpy as np
+
+# Default threshold is 0.5 — rarely optimal
+proba = pipe.predict_proba(X)[:, 1]
+
+# Find threshold that maximises F1
+precisions, recalls, thresholds = precision_recall_curve(y, proba)
+f1s = 2 * precisions * recalls / (precisions + recalls + 1e-9)
+best_threshold = thresholds[np.argmax(f1s[:-1])]
+print(f"Best threshold: {best_threshold:.3f}")
+print(f"Best F1:        {f1s.max():.3f}")
+
+y_pred_opt = (proba >= best_threshold).astype(int)
+</code></pre>
+</section>
+<section>
+<h2>Review Questions</h2>
+<div class="quiz-card" data-answer="C">
+<p><strong>Q1.</strong> Why does logistic regression use the sigmoid function instead of outputting the raw linear score?</p>
+<label class="quiz-option"><input type="radio" name="q1" value="A"> Sigmoid makes training faster</label>
+<label class="quiz-option"><input type="radio" name="q1" value="B"> Sigmoid enables multi-class classification</label>
+<label class="quiz-option"><input type="radio" name="q1" value="C"> Sigmoid maps any real number to (0,1), enabling probability interpretation</label>
+<label class="quiz-option"><input type="radio" name="q1" value="D"> Sigmoid is differentiable while the linear function is not</label>
+<button class="btn check-quiz" style="margin-top:.5rem">Check answer</button>
+</div>
+</section>
+</article><aside><nav class="toc"><h2>Contents</h2><ol id="tocList"></ol></nav></aside></div><footer class="footer"><p>&copy; <span id="year"></span> MS Machine Learning Interactive Learning Platform.</p></footer></div></main></div><script src="../../assets/js/nav-data.js"></script><script src="../../assets/js/search-index.js"></script><script src="../../assets/js/glossary-data.js"></script><script src="../../assets/js/site.js"></script><script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script><script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script></body></html>

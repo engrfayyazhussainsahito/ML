@@ -1,0 +1,131 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Lesson 9.2: Feedforward Networks | MS Machine Learning</title><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link rel="stylesheet" href="../../assets/css/styles.css"><link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css"></head><body data-root="../../" data-page-id="week-09/lesson-9-2" data-title="Lesson 9.2: Feedforward Networks"><a class="skip-link" href="#main">Skip to main content</a><div class="progress" id="readingProgress"></div><div class="mobile-topbar"><button id="openSidebar">&#9776; Navigation</button><span style="font-family:var(--serif);font-weight:700;font-size:.95rem">MS Machine Learning</span><button class="theme-toggle">&#127769; Dark mode</button></div><div class="site-shell"><aside class="sidebar" id="sidebar"><div class="brand"><span class="brand-mark">ML</span><div><h1>Machine Learning</h1><small>Interactive Learning Platform</small></div></div><button id="closeSidebar" class="btn" style="margin:.25rem 0">&#10005; Close</button><div class="nav-search"><label for="navSearch">Search lessons</label><input id="navSearch" class="site-search-input" type="search" placeholder="Type to search&#8230;" autocomplete="off"><div class="mini-results search-results"></div></div><nav id="courseNav"></nav><section class="nav-group"><div class="nav-group-title">Your Progress</div><div id="progressList" class="progress-list small"></div></section></aside><main class="main" id="main"><div class="page-wrap"><nav class="breadcrumbs"><a href="../../index.html">Home</a><span>Week 9 · Neural Networks</span></nav><section class="hero"><div class="eyebrow">Week 9 · Neural Networks</div><h1 class="page-title">Lesson 9.2: Feedforward Networks</h1><div class="toolbar"><button id="bookmarkBtn" class="btn">&#9734; Bookmark</button><button id="completeBtn" class="btn">Mark complete</button><button id="quizModeBtn" class="btn">&#127919; Start quiz mode</button><button class="print-page btn">&#128424; Print</button><button class="theme-toggle btn">&#127769; Dark mode</button></div></section><div class="layout-article"><article class="article" id="articleBody"><section>
+<h2>Feedforward Network Architecture</h2>
+<p>A feedforward network (multilayer perceptron, MLP) stacks multiple layers of neurons. Each layer transforms its input with a linear projection followed by a non-linear activation. Information flows in one direction: input → hidden layers → output. The Universal Approximation Theorem (Hornik, 1989) guarantees that a sufficiently wide single hidden layer can approximate any continuous function on a compact set — but in practice, depth is more efficient than width.</p>
+</section>
+<section>
+<h2>Building MLPs in PyTorch</h2>
+<pre><code class="language-python">import torch
+import torch.nn as nn
+import torch.optim as optim
+from torch.utils.data import TensorDataset, DataLoader
+import numpy as np
+
+class MLP(nn.Module):
+    def __init__(self, input_dim, hidden_dims, output_dim, dropout=0.3):
+        super().__init__()
+        layers = []
+        prev_dim = input_dim
+        for dim in hidden_dims:
+            layers += [
+                nn.Linear(prev_dim, dim),
+                nn.BatchNorm1d(dim),
+                nn.GELU(),
+                nn.Dropout(dropout)
+            ]
+            prev_dim = dim
+        layers.append(nn.Linear(prev_dim, output_dim))
+        self.net = nn.Sequential(*layers)
+
+    def forward(self, x):
+        return self.net(x)
+
+# Instantiate
+model = MLP(
+    input_dim=20,
+    hidden_dims=[256, 128, 64],
+    output_dim=1,
+    dropout=0.3
+)
+total_params = sum(p.numel() for p in model.parameters())
+print(f"Parameters: {total_params:,}")
+print(model)
+</code></pre>
+</section>
+<section>
+<h2>The Training Loop</h2>
+<pre><code class="language-python">from sklearn.datasets import make_classification
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import StandardScaler
+import torch, numpy as np
+
+# Data
+X_np, y_np = make_classification(n_samples=5000, n_features=20, random_state=42)
+X_tr, X_val, y_tr, y_val = train_test_split(X_np, y_np, test_size=0.2)
+sc = StandardScaler(); X_tr = sc.fit_transform(X_tr); X_val = sc.transform(X_val)
+
+def to_tensor(*arrays): return [torch.FloatTensor(a) for a in arrays]
+X_tr_t, y_tr_t = to_tensor(X_tr, y_tr.reshape(-1,1))
+X_val_t, y_val_t = to_tensor(X_val, y_val.reshape(-1,1))
+
+loader = DataLoader(TensorDataset(X_tr_t, y_tr_t), batch_size=64, shuffle=True)
+model = MLP(20, [128,64,32], 1); criterion = nn.BCEWithLogitsLoss()
+opt = optim.Adam(model.parameters(), lr=1e-3, weight_decay=1e-4)
+scheduler = optim.lr_scheduler.CosineAnnealingLR(opt, T_max=50)
+
+best_val, patience_counter, best_state = float('inf'), 0, None
+for epoch in range(200):
+    model.train()
+    for xb, yb in loader:
+        opt.zero_grad()
+        nn.BCEWithLogitsLoss()(model(xb), yb).backward()
+        nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+        opt.step()
+    scheduler.step()
+
+    model.eval()
+    with torch.no_grad():
+        val_loss = nn.BCEWithLogitsLoss()(model(X_val_t), y_val_t).item()
+        acc = ((model(X_val_t).sigmoid() > 0.5) == y_val_t).float().mean().item()
+
+    if val_loss < best_val:
+        best_val = val_loss; patience_counter = 0
+        best_state = {k: v.clone() for k, v in model.state_dict().items()}
+    else:
+        patience_counter += 1
+        if patience_counter >= 20:
+            print(f"Early stop at epoch {epoch+1}"); break
+
+    if epoch % 20 == 0:
+        print(f"Epoch {epoch+1:3d}: val_loss={val_loss:.4f}, acc={acc:.4f}")
+
+model.load_state_dict(best_state)
+</code></pre>
+</section>
+<section>
+<h2>Weight Initialisation</h2>
+<pre><code class="language-python">import torch.nn as nn
+
+# Poor initialisation -> vanishing or exploding gradients at start
+# Kaiming (He) init: designed for ReLU — var(w) = 2/fan_in
+# Xavier (Glorot) init: designed for sigmoid/tanh — var(w) = 2/(fan_in+fan_out)
+
+def init_weights(module):
+    if isinstance(module, nn.Linear):
+        nn.init.kaiming_normal_(module.weight, nonlinearity='relu')
+        nn.init.zeros_(module.bias)
+
+model = MLP(20, [128,64,32], 1)
+model.apply(init_weights)
+
+# Verify initial gradient magnitudes are reasonable
+x = torch.randn(32, 20)
+y = torch.randint(0, 2, (32, 1)).float()
+loss = nn.BCEWithLogitsLoss()(model(x), y)
+loss.backward()
+for name, p in model.named_parameters():
+    if p.grad is not None:
+        print(f"{name}: grad_norm = {p.grad.norm():.4f}")
+</code></pre>
+</section>
+<section>
+<h2>Review Questions</h2>
+<div class="quiz-card" data-answer="B">
+<p><strong>Q1.</strong> The Universal Approximation Theorem guarantees that a wide single-hidden-layer MLP can approximate any continuous function, yet deep networks are preferred. Why?</p>
+<label class="quiz-option"><input type="radio" name="q1" value="A"> Deeper networks have fewer parameters</label>
+<label class="quiz-option"><input type="radio" name="q1" value="B"> Depth is more parameter-efficient — it learns hierarchical representations that shallower networks require exponentially more neurons to represent</label>
+<label class="quiz-option"><input type="radio" name="q1" value="C"> The theorem only applies to sigmoid activations</label>
+<label class="quiz-option"><input type="radio" name="q1" value="D"> Shallower networks cannot use gradient descent</label>
+<button class="btn check-quiz" style="margin-top:.5rem">Check answer</button>
+</div>
+</section>
+</article><aside><nav class="toc"><h2>Contents</h2><ol id="tocList"></ol></nav></aside></div><footer class="footer"><p>&copy; <span id="year"></span> MS Machine Learning Interactive Learning Platform.</p></footer></div></main></div><script src="../../assets/js/nav-data.js"></script><script src="../../assets/js/search-index.js"></script><script src="../../assets/js/glossary-data.js"></script><script src="../../assets/js/site.js"></script><script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script><script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script></body></html>

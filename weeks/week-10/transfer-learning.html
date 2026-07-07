@@ -1,0 +1,107 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Lesson 10.3: Transfer Learning | MS Machine Learning</title><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link rel="stylesheet" href="../../assets/css/styles.css"><link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css"></head><body data-root="../../" data-page-id="week-10/lesson-10-3" data-title="Lesson 10.3: Transfer Learning"><a class="skip-link" href="#main">Skip to main content</a><div class="progress" id="readingProgress"></div><div class="mobile-topbar"><button id="openSidebar">&#9776; Navigation</button><span style="font-family:var(--serif);font-weight:700;font-size:.95rem">MS Machine Learning</span><button class="theme-toggle">&#127769; Dark mode</button></div><div class="site-shell"><aside class="sidebar" id="sidebar"><div class="brand"><span class="brand-mark">ML</span><div><h1>Machine Learning</h1><small>Interactive Learning Platform</small></div></div><button id="closeSidebar" class="btn" style="margin:.25rem 0">&#10005; Close</button><div class="nav-search"><label for="navSearch">Search lessons</label><input id="navSearch" class="site-search-input" type="search" placeholder="Type to search&#8230;" autocomplete="off"><div class="mini-results search-results"></div></div><nav id="courseNav"></nav><section class="nav-group"><div class="nav-group-title">Your Progress</div><div id="progressList" class="progress-list small"></div></section></aside><main class="main" id="main"><div class="page-wrap"><nav class="breadcrumbs"><a href="../../index.html">Home</a><span>Week 10 · CNNs</span></nav><section class="hero"><div class="eyebrow">Week 10 · CNNs</div><h1 class="page-title">Lesson 10.3: Transfer Learning</h1><div class="toolbar"><button id="bookmarkBtn" class="btn">&#9734; Bookmark</button><button id="completeBtn" class="btn">Mark complete</button><button id="quizModeBtn" class="btn">&#127919; Start quiz mode</button><button class="print-page btn">&#128424; Print</button><button class="theme-toggle btn">&#127769; Dark mode</button></div></section><div class="layout-article"><article class="article" id="articleBody"><section>
+<h2>The Transfer Learning Principle</h2>
+<p>A CNN trained on ImageNet (1.2M images, 1000 classes) learns general visual features in its early layers — edges, textures, shapes — that transfer to almost any vision task. Transfer learning uses this pre-learned knowledge rather than training from scratch, dramatically reducing data and compute requirements.</p>
+</section>
+<section>
+<h2>Feature Extraction vs Fine-Tuning</h2>
+<table>
+<thead><tr><th></th><th>Feature Extraction</th><th>Full Fine-Tuning</th><th>Partial Fine-Tuning</th></tr></thead>
+<tbody>
+<tr><td>Pretrained weights</td><td>Frozen</td><td>All updated</td><td>Later layers updated</td></tr>
+<tr><td>Data needed</td><td>Very little (100s)</td><td>Moderate (10k+)</td><td>Little (1k+)</td></tr>
+<tr><td>Training speed</td><td>Fast</td><td>Slow</td><td>Moderate</td></tr>
+<tr><td>Performance</td><td>Good baseline</td><td>Best (if enough data)</td><td>Usually best tradeoff</td></tr>
+</tbody>
+</table>
+<pre><code class="language-python">import torch, torch.nn as nn
+import torchvision.models as models
+import torchvision.transforms as T
+from torch.utils.data import DataLoader
+
+num_classes = 5   # e.g. flower species classification
+
+# Strategy 1: Feature extraction — freeze all, replace head
+model_fe = models.resnet50(weights=models.ResNet50_Weights.IMAGENET1K_V2)
+for param in model_fe.parameters():
+    param.requires_grad = False          # freeze all layers
+model_fe.fc = nn.Linear(2048, num_classes)   # replace head only
+# Only head parameters are trained — fast, few parameters
+
+# Strategy 2: Full fine-tuning — unfreeze all
+model_ft = models.resnet50(weights=models.ResNet50_Weights.IMAGENET1K_V2)
+model_ft.fc = nn.Linear(2048, num_classes)
+# All parameters trained — use small learning rate for pretrained layers
+
+# Strategy 3: Partial fine-tuning — freeze early, train late
+model_pft = models.resnet50(weights=models.ResNet50_Weights.IMAGENET1K_V2)
+# Freeze everything
+for param in model_pft.parameters():
+    param.requires_grad = False
+# Unfreeze layer3, layer4, and head
+for layer in [model_pft.layer3, model_pft.layer4]:
+    for param in layer.parameters():
+        param.requires_grad = True
+model_pft.fc = nn.Linear(2048, num_classes)
+
+# Count trainable parameters
+def count_trainable(m):
+    return sum(p.numel() for p in m.parameters() if p.requires_grad)
+print(f"Feature extraction: {count_trainable(model_fe):,} trainable params")
+print(f"Partial fine-tuning: {count_trainable(model_pft):,} trainable params")
+print(f"Full fine-tuning:   {count_trainable(model_ft):,} trainable params")
+</code></pre>
+</section>
+<section>
+<h2>Training with Differential Learning Rates</h2>
+<pre><code class="language-python">import torch.optim as optim
+
+model = model_pft  # partial fine-tuning model
+
+# Different learning rates: smaller for pretrained layers, larger for head
+optimiser = optim.AdamW([
+    {'params': model.layer3.parameters(), 'lr': 1e-5},
+    {'params': model.layer4.parameters(), 'lr': 3e-5},
+    {'params': model.fc.parameters(),     'lr': 1e-3},
+], weight_decay=1e-4)
+
+# Learning rate scheduler: warmup + cosine decay
+scheduler = optim.lr_scheduler.OneCycleLR(
+    optimiser, max_lr=[1e-5, 3e-5, 1e-3],
+    steps_per_epoch=100, epochs=20
+)
+</code></pre>
+</section>
+<section>
+<h2>Data Augmentation for Small Datasets</h2>
+<pre><code class="language-python">import torchvision.transforms as T
+
+train_transforms = T.Compose([
+    T.RandomResizedCrop(224, scale=(0.8, 1.0)),
+    T.RandomHorizontalFlip(p=0.5),
+    T.RandomRotation(degrees=15),
+    T.ColorJitter(brightness=0.3, contrast=0.3, saturation=0.2, hue=0.1),
+    T.RandomGrayscale(p=0.1),
+    T.ToTensor(),
+    T.Normalize(mean=[0.485, 0.456, 0.406],   # ImageNet mean/std
+                std=[0.229, 0.224, 0.225])
+])
+
+val_transforms = T.Compose([
+    T.Resize(256), T.CenterCrop(224),
+    T.ToTensor(),
+    T.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+])
+</code></pre>
+</section>
+<section>
+<h2>Review Questions</h2>
+<div class="quiz-card" data-answer="B">
+<p><strong>Q1.</strong> When fine-tuning a pretrained model with limited data (~500 samples), what strategy is most appropriate?</p>
+<label class="quiz-option"><input type="radio" name="q1" value="A"> Full fine-tuning with a high learning rate</label>
+<label class="quiz-option"><input type="radio" name="q1" value="B"> Feature extraction — freeze pretrained weights, train only the classification head</label>
+<label class="quiz-option"><input type="radio" name="q1" value="C"> Train from scratch</label>
+<label class="quiz-option"><input type="radio" name="q1" value="D"> Remove all convolutional layers and replace with linear layers</label>
+<button class="btn check-quiz" style="margin-top:.5rem">Check answer</button>
+</div>
+</section>
+</article><aside><nav class="toc"><h2>Contents</h2><ol id="tocList"></ol></nav></aside></div><footer class="footer"><p>&copy; <span id="year"></span> MS Machine Learning Interactive Learning Platform.</p></footer></div></main></div><script src="../../assets/js/nav-data.js"></script><script src="../../assets/js/search-index.js"></script><script src="../../assets/js/glossary-data.js"></script><script src="../../assets/js/site.js"></script><script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script><script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script></body></html>

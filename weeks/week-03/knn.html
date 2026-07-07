@@ -1,0 +1,123 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Lesson 3.3: K-Nearest Neighbours | MS Machine Learning</title><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link rel="stylesheet" href="../../assets/css/styles.css"><link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css"></head><body data-root="../../" data-page-id="week-03/lesson-3-3" data-title="Lesson 3.3: K-Nearest Neighbours"><a class="skip-link" href="#main">Skip to main content</a><div class="progress" id="readingProgress"></div><div class="mobile-topbar"><button id="openSidebar">&#9776; Navigation</button><span style="font-family:var(--serif);font-weight:700;font-size:.95rem">MS Machine Learning</span><button class="theme-toggle">&#127769; Dark mode</button></div><div class="site-shell"><aside class="sidebar" id="sidebar"><div class="brand"><span class="brand-mark">ML</span><div><h1>Machine Learning</h1><small>Interactive Learning Platform</small></div></div><button id="closeSidebar" class="btn" style="margin:.25rem 0">&#10005; Close</button><div class="nav-search"><label for="navSearch">Search lessons</label><input id="navSearch" class="site-search-input" type="search" placeholder="Type to search&#8230;" autocomplete="off"><div class="mini-results search-results"></div></div><nav id="courseNav"></nav><section class="nav-group"><div class="nav-group-title">Your Progress</div><div id="progressList" class="progress-list small"></div></section></aside><main class="main" id="main"><div class="page-wrap"><nav class="breadcrumbs"><a href="../../index.html">Home</a><span>Week 3 · Classification</span></nav><section class="hero"><div class="eyebrow">Week 3 · Classification</div><h1 class="page-title">Lesson 3.3: K-Nearest Neighbours</h1><div class="toolbar"><button id="bookmarkBtn" class="btn">&#9734; Bookmark</button><button id="completeBtn" class="btn">Mark complete</button><button id="quizModeBtn" class="btn">&#127919; Start quiz mode</button><button class="print-page btn">&#128424; Print</button><button class="theme-toggle btn">&#127769; Dark mode</button></div></section><div class="layout-article"><article class="article" id="articleBody"><section>
+<h2>The K-Nearest Neighbours Algorithm</h2>
+<p>KNN is a non-parametric, instance-based learner. Training simply stores the data. For a new point, it finds the k closest training examples and predicts by majority vote (classification) or average (regression). No explicit model parameters are learned — all computation happens at prediction time.</p>
+<pre><code class="language-python">import numpy as np
+
+def euclidean_distance(a, b):
+    return np.sqrt(((a - b)**2).sum())
+
+def knn_predict(X_train, y_train, x_new, k=5):
+    """KNN prediction for a single point x_new."""
+    dists = np.array([euclidean_distance(x_new, x) for x in X_train])
+    nn_idx = np.argsort(dists)[:k]
+    nn_labels = y_train[nn_idx]
+    # Majority vote
+    values, counts = np.unique(nn_labels, return_counts=True)
+    return values[np.argmax(counts)]
+
+# sklearn implementation (much faster — uses KD-tree or ball-tree)
+from sklearn.neighbors import KNeighborsClassifier
+from sklearn.datasets import make_classification
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import StandardScaler
+from sklearn.pipeline import make_pipeline
+
+X, y = make_classification(n_samples=1000, n_features=10, random_state=42)
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2)
+
+# ALWAYS scale before KNN — distances are not scale-invariant
+knn = make_pipeline(StandardScaler(), KNeighborsClassifier(n_neighbors=5))
+knn.fit(X_train, y_train)
+print(f"Test accuracy: {knn.score(X_test, y_test):.3f}")
+</code></pre>
+</section>
+<section>
+<h2>Choosing k</h2>
+<p>k is the critical hyperparameter. Small k (e.g. k=1) gives a complex, jagged decision boundary — low bias, high variance. Large k gives a smoother boundary — higher bias, lower variance. The optimal k balances this tradeoff and should be found via cross-validation.</p>
+<pre><code class="language-python">from sklearn.model_selection import cross_val_score
+import numpy as np
+
+k_values = range(1, 50, 2)
+cv_scores = []
+for k in k_values:
+    knn = make_pipeline(StandardScaler(), KNeighborsClassifier(n_neighbors=k))
+    scores = cross_val_score(knn, X_train, y_train, cv=5, scoring='accuracy')
+    cv_scores.append(scores.mean())
+
+best_k = list(k_values)[np.argmax(cv_scores)]
+print(f"Best k: {best_k}, CV accuracy: {max(cv_scores):.3f}")
+
+# Important: always use odd k for binary classification to break ties
+</code></pre>
+</section>
+<section>
+<h2>Distance Metrics</h2>
+<table>
+<thead><tr><th>Metric</th><th>Formula</th><th>Use when</th></tr></thead>
+<tbody>
+<tr><td>Euclidean</td><td>sqrt(Σ(aᵢ-bᵢ)²)</td><td>Continuous features of similar scale</td></tr>
+<tr><td>Manhattan</td><td>Σ|aᵢ-bᵢ|</td><td>High-dimensional spaces; robust to outliers</td></tr>
+<tr><td>Minkowski</td><td>(Σ|aᵢ-bᵢ|ᵖ)^(1/p)</td><td>Generalises Euclidean (p=2) and Manhattan (p=1)</td></tr>
+<tr><td>Cosine</td><td>1 - (a·b)/(||a||·||b||)</td><td>Text/embedding similarity (direction matters, not magnitude)</td></tr>
+<tr><td>Hamming</td><td>Fraction of positions that differ</td><td>Binary or categorical features</td></tr>
+</tbody>
+</table>
+<pre><code class="language-python">from sklearn.neighbors import KNeighborsClassifier
+from sklearn.model_selection import cross_val_score
+from sklearn.pipeline import make_pipeline
+from sklearn.preprocessing import StandardScaler
+
+for metric in ['euclidean', 'manhattan', 'cosine']:
+    knn = make_pipeline(StandardScaler(),
+                        KNeighborsClassifier(n_neighbors=5, metric=metric))
+    score = cross_val_score(knn, X_train, y_train, cv=5).mean()
+    print(f"{metric:12s}: {score:.3f}")
+</code></pre>
+</section>
+<section>
+<h2>The Curse of Dimensionality</h2>
+<p>In high-dimensional spaces, all points become approximately equidistant from any query point — the concept of "nearest" loses meaning. This is the curse of dimensionality, and it makes KNN ineffective in very high dimensions (p >> 20) without dimensionality reduction.</p>
+<pre><code class="language-python">import numpy as np
+
+for d in [2, 10, 100, 1000]:
+    # Sample 1000 random points in d dimensions
+    X = np.random.randn(1000, d)
+    query = np.zeros(d)
+    dists = np.linalg.norm(X - query, axis=1)
+
+    nearest = dists.min()
+    farthest = dists.max()
+    ratio = farthest / nearest
+    print(f"d={d:4d}: min_dist={nearest:.2f}, max_dist={farthest:.2f}, ratio={ratio:.2f}")
+
+# As d increases, max_dist/min_dist -> 1 (all points equally far)
+# Solution: PCA or other dim reduction before KNN
+</code></pre>
+</section>
+<section>
+<h2>Weighted KNN</h2>
+<pre><code class="language-python">from sklearn.neighbors import KNeighborsClassifier
+
+# Uniform: each neighbour votes equally
+knn_uniform = KNeighborsClassifier(n_neighbors=5, weights='uniform')
+
+# Distance-weighted: closer neighbours vote more strongly
+knn_dist = KNeighborsClassifier(n_neighbors=5, weights='distance')
+
+for name, knn in [("uniform", knn_uniform), ("distance", knn_dist)]:
+    knn.fit(X_train, y_train)
+    print(f"{name}: {knn.score(X_test, y_test):.3f}")
+</code></pre>
+</section>
+<section>
+<h2>Review Questions</h2>
+<div class="quiz-card" data-answer="A">
+<p><strong>Q1.</strong> Why must features be scaled before applying KNN?</p>
+<label class="quiz-option"><input type="radio" name="q1" value="A"> Distance metrics are not scale-invariant — a feature in thousands dominates one in [0,1]</label>
+<label class="quiz-option"><input type="radio" name="q1" value="B"> KNN cannot handle negative values</label>
+<label class="quiz-option"><input type="radio" name="q1" value="C"> Scaling reduces the number of neighbours needed</label>
+<label class="quiz-option"><input type="radio" name="q1" value="D"> KNN requires all features to sum to 1</label>
+<button class="btn check-quiz" style="margin-top:.5rem">Check answer</button>
+</div>
+</section>
+</article><aside><nav class="toc"><h2>Contents</h2><ol id="tocList"></ol></nav></aside></div><footer class="footer"><p>&copy; <span id="year"></span> MS Machine Learning Interactive Learning Platform.</p></footer></div></main></div><script src="../../assets/js/nav-data.js"></script><script src="../../assets/js/search-index.js"></script><script src="../../assets/js/glossary-data.js"></script><script src="../../assets/js/site.js"></script><script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script><script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script></body></html>

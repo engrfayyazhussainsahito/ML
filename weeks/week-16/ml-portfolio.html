@@ -1,0 +1,116 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Lesson 16.2: Building an ML Portfolio | MS Machine Learning</title><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link rel="stylesheet" href="../../assets/css/styles.css"><link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css"></head><body data-root="../../" data-page-id="week-16/lesson-16-2" data-title="Lesson 16.2: Building an ML Portfolio"><a class="skip-link" href="#main">Skip to main content</a><div class="progress" id="readingProgress"></div><div class="mobile-topbar"><button id="openSidebar">&#9776; Navigation</button><span style="font-family:var(--serif);font-weight:700;font-size:.95rem">MS Machine Learning</span><button class="theme-toggle">&#127769; Dark mode</button></div><div class="site-shell"><aside class="sidebar" id="sidebar"><div class="brand"><span class="brand-mark">ML</span><div><h1>Machine Learning</h1><small>Interactive Learning Platform</small></div></div><button id="closeSidebar" class="btn" style="margin:.25rem 0">&#10005; Close</button><div class="nav-search"><label for="navSearch">Search lessons</label><input id="navSearch" class="site-search-input" type="search" placeholder="Type to search&#8230;" autocomplete="off"><div class="mini-results search-results"></div></div><nav id="courseNav"></nav><section class="nav-group"><div class="nav-group-title">Your Progress</div><div id="progressList" class="progress-list small"></div></section></aside><main class="main" id="main"><div class="page-wrap"><nav class="breadcrumbs"><a href="../../index.html">Home</a><span>Week 16 · Capstone</span></nav><section class="hero"><div class="eyebrow">Week 16 · Capstone</div><h1 class="page-title">Lesson 16.2: Building an ML Portfolio</h1><div class="toolbar"><button id="bookmarkBtn" class="btn">&#9734; Bookmark</button><button id="completeBtn" class="btn">Mark complete</button><button id="quizModeBtn" class="btn">&#127919; Start quiz mode</button><button class="print-page btn">&#128424; Print</button><button class="theme-toggle btn">&#127769; Dark mode</button></div></section><div class="layout-article"><article class="article" id="articleBody"><section>
+<h2>Why a Portfolio?</h2>
+<p>In ML hiring, a strong portfolio demonstrably outweighs academic credentials. A well-presented GitHub repository showing a complete, reproducible project — with clean code, clear documentation, and honest evaluation — signals competence more reliably than a degree. This lesson covers what makes a portfolio compelling and how to build one systematically.</p>
+</section>
+<section>
+<h2>GitHub Repository Structure</h2>
+<pre><code class="language-python">"""
+Exemplary ML project structure:
+
+my-ml-project/
+├── README.md          <- Clear problem statement, results, how to run
+├── data/
+│   ├── raw/           <- Original data (or download script)
+│   ├── processed/     <- Cleaned, transformed data
+│   └── external/      <- External data sources
+├── notebooks/
+│   ├── 01_eda.ipynb   <- Exploratory data analysis
+│   ├── 02_baseline.ipynb
+│   └── 03_experiments.ipynb
+├── src/               <- Importable Python package
+│   ├── __init__.py
+│   ├── data.py        <- Dataset loading and preprocessing
+│   ├── features.py    <- Feature engineering
+│   ├── models.py      <- Model definitions
+│   ├── train.py       <- Training script
+│   └── evaluate.py    <- Evaluation script
+├── tests/
+│   └── test_features.py
+├── configs/           <- Hyperparameter configs (YAML/JSON)
+├── requirements.txt   <- Pin exact versions
+├── Makefile           <- make data / make train / make evaluate
+└── model_card.md      <- Model documentation
+"""
+
+# README.md must answer:
+readme_sections = [
+    "Problem: what are you solving and why does it matter?",
+    "Approach: what methods did you use and why?",
+    "Results: what did you achieve? (table with baselines)",
+    "Usage: how do I run this? (3 commands max)",
+    "Data: where does it come from? (licensing)",
+    "Limitations: what doesn't this solve?",
+]
+</code></pre>
+</section>
+<section>
+<h2>Writing About Results Honestly</h2>
+<pre><code class="language-python">import numpy as np
+from sklearn.utils import resample
+
+def honest_results_table(model_name, y_test, y_pred, y_prob=None):
+    """
+    Report results the way a good researcher would.
+    """
+    from sklearn.metrics import accuracy_score, f1_score, roc_auc_score
+    
+    acc = accuracy_score(y_test, y_pred)
+    f1  = f1_score(y_test, y_pred, average='weighted')
+    
+    # Bootstrap confidence intervals
+    n_bootstrap = 1000
+    acc_boot, f1_boot = [], []
+    for _ in range(n_bootstrap):
+        idx = resample(range(len(y_test)), random_state=None)
+        acc_boot.append(accuracy_score(y_test[idx], y_pred[idx]))
+        f1_boot.append(f1_score(y_test[idx], y_pred[idx], average='weighted'))
+    
+    acc_ci = np.percentile(acc_boot, [2.5, 97.5])
+    f1_ci  = np.percentile(f1_boot, [2.5, 97.5])
+    
+    print(f"\n{model_name} Results")
+    print(f"  Accuracy: {acc:.3f} (95% CI: [{acc_ci[0]:.3f}, {acc_ci[1]:.3f}])")
+    print(f"  F1:       {f1:.3f}  (95% CI: [{f1_ci[0]:.3f}, {f1_ci[1]:.3f}])")
+    
+    if y_prob is not None:
+        auc = roc_auc_score(y_test, y_prob, multi_class='ovr')
+        print(f"  AUC:      {auc:.3f}")
+    
+    # Be honest about limitations
+    print("\n  Note: evaluated on held-out test set (n={})".format(len(y_test)))
+    print("  Comparison with published baselines where available.")
+</code></pre>
+</section>
+<section>
+<h2>Kaggle Competitions as Portfolio Evidence</h2>
+<pre><code class="language-python">kaggle_strategy = {
+    "Choose competitions wisely": [
+        "Tabular competitions: fastest to build ML skills",
+        "Featured (not playground): signal of real difficulty",
+        "Check data licensing before using in portfolio"
+    ],
+    "Write-up is more valuable than rank": [
+        "Top 10% without a write-up: little portfolio value",
+        "Top 30% with a clear, educational write-up: strong portfolio signal",
+        "Explain: what you tried, what worked, what didn't, and why"
+    ],
+    "Notebook competitions": [
+        "Code must be public and reproducible",
+        "Clean, well-commented notebooks stand out",
+        "Include exploratory analysis, not just final model"
+    ]
+}
+</code></pre>
+</section>
+<section>
+<h2>Review Questions</h2>
+<div class="quiz-card" data-answer="C">
+<p><strong>Q1.</strong> In an ML portfolio, what matters more than achieving the highest possible test accuracy?</p>
+<label class="quiz-option"><input type="radio" name="q1" value="A"> The number of models you tried</label>
+<label class="quiz-option"><input type="radio" name="q1" value="B"> Using the most complex architecture available</label>
+<label class="quiz-option"><input type="radio" name="q1" value="C"> Clear communication of the problem, methodology, results with honest caveats, and reproducible code</label>
+<label class="quiz-option"><input type="radio" name="q1" value="D"> Having the most training data</label>
+<button class="btn check-quiz" style="margin-top:.5rem">Check answer</button>
+</div>
+</section>
+</article><aside><nav class="toc"><h2>Contents</h2><ol id="tocList"></ol></nav></aside></div><footer class="footer"><p>&copy; <span id="year"></span> MS Machine Learning Interactive Learning Platform.</p></footer></div></main></div><script src="../../assets/js/nav-data.js"></script><script src="../../assets/js/search-index.js"></script><script src="../../assets/js/glossary-data.js"></script><script src="../../assets/js/site.js"></script><script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script><script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script></body></html>

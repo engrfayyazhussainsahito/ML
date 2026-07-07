@@ -1,0 +1,121 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Lesson 1.2: Learning Paradigms | MS Machine Learning</title><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link rel="stylesheet" href="../../assets/css/styles.css"><link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css"></head><body data-root="../../" data-page-id="week-01/lesson-1-2" data-title="Lesson 1.2: Learning Paradigms"><a class="skip-link" href="#main">Skip to main content</a><div class="progress" id="readingProgress"></div><div class="mobile-topbar"><button id="openSidebar">&#9776; Navigation</button><span style="font-family:var(--serif);font-weight:700;font-size:.95rem">MS Machine Learning</span><button class="theme-toggle">&#127769; Dark mode</button></div><div class="site-shell"><aside class="sidebar" id="sidebar"><div class="brand"><span class="brand-mark">ML</span><div><h1>Machine Learning</h1><small>Interactive Learning Platform</small></div></div><button id="closeSidebar" class="btn" style="margin:.25rem 0">&#10005; Close</button><div class="nav-search"><label for="navSearch">Search lessons</label><input id="navSearch" class="site-search-input" type="search" placeholder="Type to search&#8230;" autocomplete="off"><div class="mini-results search-results"></div></div><nav id="courseNav"></nav><section class="nav-group"><div class="nav-group-title">Your Progress</div><div id="progressList" class="progress-list small"></div></section></aside><main class="main" id="main"><div class="page-wrap"><nav class="breadcrumbs"><a href="../../index.html">Home</a><span>Week 1 · What is Machine Learning?</span></nav><section class="hero"><div class="eyebrow">Week 1 · What is Machine Learning?</div><h1 class="page-title">Lesson 1.2: Learning Paradigms</h1><div class="toolbar"><button id="bookmarkBtn" class="btn">&#9734; Bookmark</button><button id="completeBtn" class="btn">Mark complete</button><button id="quizModeBtn" class="btn">&#127919; Start quiz mode</button><button class="print-page btn">&#128424; Print</button><button class="theme-toggle btn">&#127769; Dark mode</button></div></section><div class="layout-article"><article class="article" id="articleBody"><section>
+<h2>The Three Paradigms</h2>
+<p>Almost every ML algorithm belongs to one of three learning paradigms, defined by the type of signal the learner receives during training.</p>
+<div class="diagram"><pre class="mermaid">graph TD
+  A[Learning Paradigm] --> B[Supervised]
+  A --> C[Unsupervised]
+  A --> D[Reinforcement]
+  B --> B1[Classification]
+  B --> B2[Regression]
+  C --> C1[Clustering]
+  C --> C2[Dim. Reduction]
+  D --> D1[Game Playing]
+  D --> D2[Robotics]
+</pre></div>
+</section>
+<section>
+<h2>Supervised Learning</h2>
+<p>The learner receives a dataset of (input, label) pairs D = {(x₁,y₁), …, (xₙ,yₙ)} and learns a function f: X→Y that minimises prediction error on unseen data. The core assumption: training and test data are drawn i.i.d. from the same distribution.</p>
+<pre><code class="language-python">from sklearn.datasets import make_classification
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import classification_report
+import numpy as np
+
+X, y = make_classification(n_samples=1000, n_features=20,
+                            n_informative=10, n_classes=3,
+                            random_state=42)
+
+X_train, X_test, y_train, y_test = train_test_split(
+    X, y, test_size=0.2, stratify=y, random_state=42)
+
+model = RandomForestClassifier(n_estimators=100, random_state=42)
+model.fit(X_train, y_train)
+print(classification_report(y_test, model.predict(X_test)))
+</code></pre>
+<table>
+<thead><tr><th>Task type</th><th>Output y</th><th>Loss</th><th>Example</th></tr></thead>
+<tbody>
+<tr><td>Binary classification</td><td>{0,1}</td><td>Binary cross-entropy</td><td>Spam detection</td></tr>
+<tr><td>Multi-class</td><td>{0…K-1}</td><td>Categorical CE</td><td>Image classification</td></tr>
+<tr><td>Regression</td><td>ℝ</td><td>MSE / MAE / Huber</td><td>House prices</td></tr>
+<tr><td>Multi-label</td><td>Binary vector</td><td>BCE per label</td><td>Document tagging</td></tr>
+</tbody>
+</table>
+</section>
+<section>
+<h2>Unsupervised Learning</h2>
+<p>No labels are provided. The learner must discover structure — clusters, latent factors, density — from P(x) alone. Evaluation is harder because there is no ground-truth to compare against.</p>
+<pre><code class="language-python">from sklearn.cluster import KMeans
+from sklearn.decomposition import PCA
+from sklearn.preprocessing import StandardScaler
+import numpy as np
+
+X = np.random.randn(500, 20)
+
+# 1. Reduce to 2D for visualisation
+X_2d = PCA(n_components=2).fit_transform(StandardScaler().fit_transform(X))
+
+# 2. Cluster in 2D
+km = KMeans(n_clusters=4, random_state=42, n_init=10)
+km.fit(X_2d)
+print("Cluster sizes:", np.bincount(km.labels_))
+
+# Inertia: sum of squared distances to cluster centres
+print(f"Inertia: {km.inertia_:.1f}")
+</code></pre>
+</section>
+<section>
+<h2>Semi-Supervised Learning</h2>
+<p>Most real-world datasets have abundant unlabelled data and scarce labels. Semi-supervised methods use both: labels for supervision and unlabelled data to regularise representations via consistency constraints or pseudo-labelling.</p>
+<pre><code class="language-python">from sklearn.semi_supervised import LabelSpreading
+import numpy as np
+
+# -1 signals "unlabelled" to sklearn's semi-supervised estimators
+y_semi = y_train.copy()
+y_semi[100:] = -1   # only first 100 are labelled
+
+ls = LabelSpreading(kernel='rbf', alpha=0.2, max_iter=1000)
+ls.fit(X_train, y_semi)
+print(f"Semi-supervised accuracy: {ls.score(X_test, y_test):.3f}")
+</code></pre>
+</section>
+<section>
+<h2>Reinforcement Learning</h2>
+<p>An agent interacts with an environment, taking actions that change state and yield rewards. The goal is a policy π(a|s) that maximises expected cumulative reward (return G = Σ γᵗ rₜ, where γ is a discount factor).</p>
+<pre><code class="language-python">import gymnasium as gym
+
+env = gym.make("CartPole-v1")
+obs, _ = env.reset(seed=42)
+total_reward, done = 0, False
+
+while not done:
+    action = env.action_space.sample()   # random policy
+    obs, reward, terminated, truncated, _ = env.step(action)
+    total_reward += reward
+    done = terminated or truncated
+
+print(f"Total reward (random): {total_reward}")
+# A trained agent achieves ~500 (max). Random: ~20.
+</code></pre>
+</section>
+<section>
+<h2>Review Questions</h2>
+<div class="quiz-card" data-answer="B">
+<p><strong>Q1.</strong> A fraud detection system trained on labelled past transactions is an example of:</p>
+<label class="quiz-option"><input type="radio" name="q1" value="A"> Unsupervised learning</label>
+<label class="quiz-option"><input type="radio" name="q1" value="B"> Supervised learning (binary classification)</label>
+<label class="quiz-option"><input type="radio" name="q1" value="C"> Reinforcement learning</label>
+<label class="quiz-option"><input type="radio" name="q1" value="D"> Semi-supervised learning</label>
+<button class="btn check-quiz" style="margin-top:.5rem">Check answer</button>
+</div>
+<div class="quiz-card" data-answer="C">
+<p><strong>Q2.</strong> In RL, the policy π(a|s) represents:</p>
+<label class="quiz-option"><input type="radio" name="q2" value="A"> The environment's transition function</label>
+<label class="quiz-option"><input type="radio" name="q2" value="B"> The cumulative sum of rewards</label>
+<label class="quiz-option"><input type="radio" name="q2" value="C"> The probability distribution over actions given a state</label>
+<label class="quiz-option"><input type="radio" name="q2" value="D"> The loss function</label>
+<button class="btn check-quiz" style="margin-top:.5rem">Check answer</button>
+</div>
+</section>
+</article><aside><nav class="toc"><h2>Contents</h2><ol id="tocList"></ol></nav></aside></div><footer class="footer"><p>&copy; <span id="year"></span> MS Machine Learning Interactive Learning Platform.</p></footer></div></main></div><script src="../../assets/js/nav-data.js"></script><script src="../../assets/js/search-index.js"></script><script src="../../assets/js/glossary-data.js"></script><script src="../../assets/js/site.js"></script><script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script><script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script></body></html>

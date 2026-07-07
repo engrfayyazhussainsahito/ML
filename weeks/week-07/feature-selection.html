@@ -1,0 +1,96 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Lesson 7.2: Feature Selection | MS Machine Learning</title><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link rel="stylesheet" href="../../assets/css/styles.css"><link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css"></head><body data-root="../../" data-page-id="week-07/lesson-7-2" data-title="Lesson 7.2: Feature Selection"><a class="skip-link" href="#main">Skip to main content</a><div class="progress" id="readingProgress"></div><div class="mobile-topbar"><button id="openSidebar">&#9776; Navigation</button><span style="font-family:var(--serif);font-weight:700;font-size:.95rem">MS Machine Learning</span><button class="theme-toggle">&#127769; Dark mode</button></div><div class="site-shell"><aside class="sidebar" id="sidebar"><div class="brand"><span class="brand-mark">ML</span><div><h1>Machine Learning</h1><small>Interactive Learning Platform</small></div></div><button id="closeSidebar" class="btn" style="margin:.25rem 0">&#10005; Close</button><div class="nav-search"><label for="navSearch">Search lessons</label><input id="navSearch" class="site-search-input" type="search" placeholder="Type to search&#8230;" autocomplete="off"><div class="mini-results search-results"></div></div><nav id="courseNav"></nav><section class="nav-group"><div class="nav-group-title">Your Progress</div><div id="progressList" class="progress-list small"></div></section></aside><main class="main" id="main"><div class="page-wrap"><nav class="breadcrumbs"><a href="../../index.html">Home</a><span>Week 7 · Feature Engineering</span></nav><section class="hero"><div class="eyebrow">Week 7 · Feature Engineering</div><h1 class="page-title">Lesson 7.2: Feature Selection</h1><div class="toolbar"><button id="bookmarkBtn" class="btn">&#9734; Bookmark</button><button id="completeBtn" class="btn">Mark complete</button><button id="quizModeBtn" class="btn">&#127919; Start quiz mode</button><button class="print-page btn">&#128424; Print</button><button class="theme-toggle btn">&#127769; Dark mode</button></div></section><div class="layout-article"><article class="article" id="articleBody"><section>
+<h2>Why Feature Selection?</h2>
+<p>Adding irrelevant features increases noise, slows training, and can degrade performance (the curse of dimensionality). Feature selection reduces the feature matrix to the most informative subset, improving generalisation, interpretability, and computational efficiency.</p>
+</section>
+<section>
+<h2>Filter Methods</h2>
+<pre><code class="language-python">from sklearn.feature_selection import (
+    VarianceThreshold, SelectKBest, f_classif, mutual_info_classif
+)
+from sklearn.datasets import make_classification
+import numpy as np
+
+X, y = make_classification(n_samples=1000, n_features=50,
+                            n_informative=15, random_state=42)
+
+# Remove constant/quasi-constant features
+vt = VarianceThreshold(threshold=0.01)
+X_var = vt.fit_transform(X)
+print(f"After variance filter: {X_var.shape[1]} features")
+
+# Univariate: select top k features by ANOVA F-statistic
+sel_f = SelectKBest(f_classif, k=20)
+X_kbest_f = sel_f.fit_transform(X, y)
+print(f"ANOVA F: selected {X_kbest_f.shape[1]} features")
+
+# Mutual information: captures non-linear relationships
+sel_mi = SelectKBest(mutual_info_classif, k=20)
+X_kbest_mi = sel_mi.fit_transform(X, y)
+scores_mi = sel_mi.scores_
+top_features = np.argsort(scores_mi)[::-1][:10]
+print(f"Top 10 by MI: {top_features}")
+</code></pre>
+</section>
+<section>
+<h2>Wrapper Methods: Recursive Feature Elimination</h2>
+<pre><code class="language-python">from sklearn.feature_selection import RFE, RFECV
+from sklearn.ensemble import RandomForestClassifier
+
+# RFE: train model, remove least important feature, repeat
+rfe = RFE(
+    estimator=RandomForestClassifier(n_estimators=100, random_state=42),
+    n_features_to_select=15,
+    step=0.1,   # remove 10% of remaining features per round
+    verbose=0
+)
+rfe.fit(X, y)
+print(f"Selected features: {rfe.support_.sum()}")
+print(f"Feature rankings (1=selected): {rfe.ranking_[:10]}")
+
+# RFECV: find optimal number of features with CV
+rfecv = RFECV(
+    estimator=RandomForestClassifier(n_estimators=50, random_state=42),
+    step=1, cv=5, scoring='accuracy', n_jobs=-1, min_features_to_select=5
+)
+rfecv.fit(X, y)
+print(f"Optimal features: {rfecv.n_features_}")
+print(f"CV score: {rfecv.cv_results_['mean_test_score'].max():.4f}")
+</code></pre>
+</section>
+<section>
+<h2>Embedded Methods: SHAP</h2>
+<pre><code class="language-python">import shap
+from sklearn.ensemble import GradientBoostingClassifier
+import numpy as np
+
+model = GradientBoostingClassifier(n_estimators=200, random_state=42)
+model.fit(X, y)
+
+explainer = shap.TreeExplainer(model)
+shap_values = explainer.shap_values(X[:200])   # compute for subset
+
+# Mean absolute SHAP value = global feature importance
+mean_shap = np.abs(shap_values).mean(axis=0)
+ranking = np.argsort(mean_shap)[::-1]
+print("Top 10 features by SHAP:")
+for i in range(10):
+    print(f"  Feature {ranking[i]:2d}: {mean_shap[ranking[i]]:.4f}")
+
+# Select features with SHAP > threshold
+threshold = 0.01
+selected = np.where(mean_shap > threshold)[0]
+print(f"Selected {len(selected)} features with SHAP > {threshold}")
+</code></pre>
+</section>
+<section>
+<h2>Review Questions</h2>
+<div class="quiz-card" data-answer="B">
+<p><strong>Q1.</strong> What is the key difference between filter and wrapper feature selection methods?</p>
+<label class="quiz-option"><input type="radio" name="q1" value="A"> Filters use more features; wrappers use fewer</label>
+<label class="quiz-option"><input type="radio" name="q1" value="B"> Filters score features independently of the model; wrappers train a model to evaluate subsets</label>
+<label class="quiz-option"><input type="radio" name="q1" value="C"> Filters are only for regression; wrappers only for classification</label>
+<label class="quiz-option"><input type="radio" name="q1" value="D"> Wrappers are always faster</label>
+<button class="btn check-quiz" style="margin-top:.5rem">Check answer</button>
+</div>
+</section>
+</article><aside><nav class="toc"><h2>Contents</h2><ol id="tocList"></ol></nav></aside></div><footer class="footer"><p>&copy; <span id="year"></span> MS Machine Learning Interactive Learning Platform.</p></footer></div></main></div><script src="../../assets/js/nav-data.js"></script><script src="../../assets/js/search-index.js"></script><script src="../../assets/js/glossary-data.js"></script><script src="../../assets/js/site.js"></script><script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script><script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script></body></html>

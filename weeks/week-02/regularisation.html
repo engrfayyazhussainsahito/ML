@@ -1,0 +1,121 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Lesson 2.3: Regularisation | MS Machine Learning</title><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link rel="stylesheet" href="../../assets/css/styles.css"><link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css"></head><body data-root="../../" data-page-id="week-02/lesson-2-3" data-title="Lesson 2.3: Regularisation"><a class="skip-link" href="#main">Skip to main content</a><div class="progress" id="readingProgress"></div><div class="mobile-topbar"><button id="openSidebar">&#9776; Navigation</button><span style="font-family:var(--serif);font-weight:700;font-size:.95rem">MS Machine Learning</span><button class="theme-toggle">&#127769; Dark mode</button></div><div class="site-shell"><aside class="sidebar" id="sidebar"><div class="brand"><span class="brand-mark">ML</span><div><h1>Machine Learning</h1><small>Interactive Learning Platform</small></div></div><button id="closeSidebar" class="btn" style="margin:.25rem 0">&#10005; Close</button><div class="nav-search"><label for="navSearch">Search lessons</label><input id="navSearch" class="site-search-input" type="search" placeholder="Type to search&#8230;" autocomplete="off"><div class="mini-results search-results"></div></div><nav id="courseNav"></nav><section class="nav-group"><div class="nav-group-title">Your Progress</div><div id="progressList" class="progress-list small"></div></section></aside><main class="main" id="main"><div class="page-wrap"><nav class="breadcrumbs"><a href="../../index.html">Home</a><span>Week 2 · Regression</span></nav><section class="hero"><div class="eyebrow">Week 2 · Regression</div><h1 class="page-title">Lesson 2.3: Regularisation</h1><div class="toolbar"><button id="bookmarkBtn" class="btn">&#9734; Bookmark</button><button id="completeBtn" class="btn">Mark complete</button><button id="quizModeBtn" class="btn">&#127919; Start quiz mode</button><button class="print-page btn">&#128424; Print</button><button class="theme-toggle btn">&#127769; Dark mode</button></div></section><div class="layout-article"><article class="article" id="articleBody"><section>
+<h2>The Overfitting Problem</h2>
+<p>A high-degree polynomial can fit training data perfectly while performing terribly on new data — it memorises noise rather than the true signal. Regularisation adds a penalty term to the loss function that discourages large weights, controlling model complexity implicitly.</p>
+<pre><code class="language-python">import numpy as np
+from sklearn.preprocessing import PolynomialFeatures
+from sklearn.linear_model import LinearRegression, Ridge, Lasso
+from sklearn.pipeline import make_pipeline
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import mean_squared_error
+
+np.random.seed(42)
+x = np.linspace(0, 1, 30).reshape(-1, 1)
+y = np.sin(2 * np.pi * x.ravel()) + np.random.randn(30) * 0.3
+
+X_train, X_test, y_train, y_test = train_test_split(x, y, test_size=0.33)
+
+for degree in [1, 3, 9, 15]:
+    model = make_pipeline(PolynomialFeatures(degree), LinearRegression())
+    model.fit(X_train, y_train)
+    train_rmse = np.sqrt(mean_squared_error(y_train, model.predict(X_train)))
+    test_rmse  = np.sqrt(mean_squared_error(y_test,  model.predict(X_test)))
+    print(f"Degree {degree:2d}: train={train_rmse:.3f}, test={test_rmse:.3f}")
+# Degree 15: train≈0.01, test>>1 — extreme overfitting
+</code></pre>
+</section>
+<section>
+<h2>L2 Regularisation: Ridge Regression</h2>
+<p>Ridge adds the squared L2 norm of weights to the loss:</p>
+<blockquote>L_ridge(w) = ||y - Xw||² + α||w||²</blockquote>
+<p>The hyperparameter α controls the strength of regularisation. α→0 recovers OLS; α→∞ shrinks all weights to zero. Ridge has a closed-form solution: w* = (XᵀX + αI)⁻¹Xᵀy, which is always invertible even with collinear features.</p>
+<pre><code class="language-python">from sklearn.linear_model import Ridge, RidgeCV
+import numpy as np
+
+# RidgeCV finds the best alpha via leave-one-out cross-validation
+alphas = np.logspace(-4, 4, 100)
+ridge_cv = RidgeCV(alphas=alphas, cv=5)
+ridge_cv.fit(X_train, y_train)
+print(f"Best alpha: {ridge_cv.alpha_:.4f}")
+print(f"Test RMSE:  {np.sqrt(mean_squared_error(y_test, ridge_cv.predict(X_test))):.3f}")
+
+# Effect of alpha on coefficients
+from sklearn.linear_model import ridge_regression
+for alpha in [0.001, 1.0, 100.0]:
+    w = ridge_regression(X_train, y_train, alpha=alpha)
+    print(f"alpha={alpha:7.3f}  ||w||={np.linalg.norm(w):.3f}")
+# As alpha increases, ||w|| decreases
+</code></pre>
+</section>
+<section>
+<h2>L1 Regularisation: Lasso</h2>
+<p>Lasso adds the L1 norm of weights:</p>
+<blockquote>L_lasso(w) = ||y - Xw||² + α||w||₁</blockquote>
+<p>Lasso performs automatic feature selection: its L1 penalty drives many weights exactly to zero (sparse solutions), unlike Ridge which only shrinks weights toward (but not to) zero. Use Lasso when you suspect only a few features are truly predictive.</p>
+<pre><code class="language-python">from sklearn.linear_model import Lasso, LassoCV
+import numpy as np
+
+# High-dimensional problem: 200 samples, 500 features, only 10 are relevant
+n, p = 200, 500
+X = np.random.randn(n, p)
+true_w = np.zeros(p)
+true_w[:10] = np.random.randn(10) * 3   # only first 10 features matter
+y = X @ true_w + np.random.randn(n) * 0.5
+
+lasso_cv = LassoCV(cv=5, random_state=42)
+lasso_cv.fit(X, y)
+
+# Count non-zero coefficients
+n_nonzero = np.sum(lasso_cv.coef_ != 0)
+print(f"Alpha: {lasso_cv.alpha_:.4f}")
+print(f"Non-zero coefficients: {n_nonzero} (true: 10)")
+print(f"Recovered true features: {np.sum(np.abs(lasso_cv.coef_[:10]) > 0.1)}")
+</code></pre>
+</section>
+<section>
+<h2>Elastic Net: Best of Both</h2>
+<p>Elastic Net combines L1 and L2 penalties:</p>
+<blockquote>L_enet(w) = ||y - Xw||² + α(ρ||w||₁ + (1-ρ)||w||²)</blockquote>
+<p>The mixing parameter ρ (l1_ratio in sklearn) interpolates between Lasso (ρ=1) and Ridge (ρ=0). Elastic Net is preferred when features are correlated and you want both sparsity and stability.</p>
+<pre><code class="language-python">from sklearn.linear_model import ElasticNetCV
+import numpy as np
+
+enet = ElasticNetCV(
+    l1_ratio=[0.1, 0.5, 0.7, 0.9, 0.95, 1.0],
+    alphas=np.logspace(-4, 1, 50),
+    cv=5
+)
+enet.fit(X_train, y_train)
+print(f"Best alpha:    {enet.alpha_:.4f}")
+print(f"Best l1_ratio: {enet.l1_ratio_:.2f}")
+print(f"Non-zero:      {np.sum(enet.coef_ != 0)}")
+</code></pre>
+</section>
+<section>
+<h2>Regularisation Path</h2>
+<pre><code class="language-python">from sklearn.linear_model import lasso_path
+import numpy as np, matplotlib.pyplot as plt
+
+alphas, coefs, _ = lasso_path(X_train, y_train, n_alphas=100)
+
+plt.figure(figsize=(8, 4))
+plt.semilogx(alphas, coefs.T)
+plt.xlabel("Alpha (log scale)")
+plt.ylabel("Coefficient value")
+plt.title("Lasso regularisation path")
+plt.axvline(lasso_cv.alpha_, color='k', linestyle='--', label="CV best")
+plt.legend(); plt.gca().invert_xaxis()   # high alpha = more regularisation
+plt.show()
+</code></pre>
+</section>
+<section>
+<h2>Review Questions</h2>
+<div class="quiz-card" data-answer="B">
+<p><strong>Q1.</strong> What distinguishes Lasso from Ridge regularisation?</p>
+<label class="quiz-option"><input type="radio" name="q1" value="A"> Lasso uses L2 penalty; Ridge uses L1 penalty</label>
+<label class="quiz-option"><input type="radio" name="q1" value="B"> Lasso drives coefficients to exactly zero (sparse); Ridge shrinks toward but not to zero</label>
+<label class="quiz-option"><input type="radio" name="q1" value="C"> Ridge is only for binary classification</label>
+<label class="quiz-option"><input type="radio" name="q1" value="D"> Lasso always outperforms Ridge</label>
+<button class="btn check-quiz" style="margin-top:.5rem">Check answer</button>
+</div>
+</section>
+</article><aside><nav class="toc"><h2>Contents</h2><ol id="tocList"></ol></nav></aside></div><footer class="footer"><p>&copy; <span id="year"></span> MS Machine Learning Interactive Learning Platform.</p></footer></div></main></div><script src="../../assets/js/nav-data.js"></script><script src="../../assets/js/search-index.js"></script><script src="../../assets/js/glossary-data.js"></script><script src="../../assets/js/site.js"></script><script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script><script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script></body></html>

@@ -1,0 +1,104 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Lesson 4.2: Cross-Validation | MS Machine Learning</title><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link rel="stylesheet" href="../../assets/css/styles.css"><link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css"></head><body data-root="../../" data-page-id="week-04/lesson-4-2" data-title="Lesson 4.2: Cross-Validation"><a class="skip-link" href="#main">Skip to main content</a><div class="progress" id="readingProgress"></div><div class="mobile-topbar"><button id="openSidebar">&#9776; Navigation</button><span style="font-family:var(--serif);font-weight:700;font-size:.95rem">MS Machine Learning</span><button class="theme-toggle">&#127769; Dark mode</button></div><div class="site-shell"><aside class="sidebar" id="sidebar"><div class="brand"><span class="brand-mark">ML</span><div><h1>Machine Learning</h1><small>Interactive Learning Platform</small></div></div><button id="closeSidebar" class="btn" style="margin:.25rem 0">&#10005; Close</button><div class="nav-search"><label for="navSearch">Search lessons</label><input id="navSearch" class="site-search-input" type="search" placeholder="Type to search&#8230;" autocomplete="off"><div class="mini-results search-results"></div></div><nav id="courseNav"></nav><section class="nav-group"><div class="nav-group-title">Your Progress</div><div id="progressList" class="progress-list small"></div></section></aside><main class="main" id="main"><div class="page-wrap"><nav class="breadcrumbs"><a href="../../index.html">Home</a><span>Week 4 · Model Evaluation</span></nav><section class="hero"><div class="eyebrow">Week 4 · Model Evaluation</div><h1 class="page-title">Lesson 4.2: Cross-Validation</h1><div class="toolbar"><button id="bookmarkBtn" class="btn">&#9734; Bookmark</button><button id="completeBtn" class="btn">Mark complete</button><button id="quizModeBtn" class="btn">&#127919; Start quiz mode</button><button class="print-page btn">&#128424; Print</button><button class="theme-toggle btn">&#127769; Dark mode</button></div></section><div class="layout-article"><article class="article" id="articleBody"><section>
+<h2>Why Cross-Validation?</h2>
+<p>A single train/validation split gives a noisy estimate of generalisation error — the result depends heavily on which samples happened to land in each split. Cross-validation uses all data for both training and validation by rotating through k non-overlapping folds, then averaging the k scores. This gives a lower-variance, less biased estimate of true performance.</p>
+</section>
+<section>
+<h2>K-Fold Cross-Validation</h2>
+<pre><code class="language-python">from sklearn.model_selection import KFold, cross_val_score, cross_validate
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.datasets import make_classification
+import numpy as np
+
+X, y = make_classification(n_samples=1000, n_features=20, random_state=42)
+model = RandomForestClassifier(n_estimators=100, random_state=42)
+
+# 5-fold CV
+cv = KFold(n_splits=5, shuffle=True, random_state=42)
+scores = cross_val_score(model, X, y, cv=cv, scoring='accuracy', n_jobs=-1)
+
+print(f"Fold scores:  {scores.round(3)}")
+print(f"Mean:         {scores.mean():.3f}")
+print(f"Std:          {scores.std():.3f}")
+print(f"95% CI:       [{scores.mean()-2*scores.std():.3f}, {scores.mean()+2*scores.std():.3f}]")
+
+# Multiple metrics at once
+results = cross_validate(model, X, y, cv=cv,
+                         scoring=['accuracy','f1','roc_auc'], n_jobs=-1)
+for metric, vals in results.items():
+    if metric.startswith('test_'):
+        print(f"{metric[5:]:12s}: {vals.mean():.3f} +/- {vals.std():.3f}")
+</code></pre>
+</section>
+<section>
+<h2>Stratified K-Fold</h2>
+<p>For classification, use <code>StratifiedKFold</code> to preserve the class distribution in each fold. This is especially important for imbalanced datasets where random splits might produce folds with no minority class examples.</p>
+<pre><code class="language-python">from sklearn.model_selection import StratifiedKFold
+
+# Creates a StratifiedKFold automatically when cv=int for classifiers
+scores_stratified = cross_val_score(model, X, y, cv=5,
+                                    scoring='f1', n_jobs=-1)
+
+# Manual stratified fold
+skf = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
+for fold, (train_idx, val_idx) in enumerate(skf.split(X, y)):
+    X_tr, X_val = X[train_idx], X[val_idx]
+    y_tr, y_val = y[train_idx], y[val_idx]
+    # Verify class balance in each fold
+    print(f"Fold {fold+1}: train +rate={y_tr.mean():.2f}, val +rate={y_val.mean():.2f}")
+</code></pre>
+</section>
+<section>
+<h2>Nested Cross-Validation</h2>
+<p>If you use cross-validation both to select hyperparameters AND evaluate the model, you get an optimistically biased estimate — the outer CV is compromised by the inner selection. Nested CV uses an outer loop for evaluation and an inner loop for hyperparameter selection, giving an unbiased performance estimate.</p>
+<pre><code class="language-python">from sklearn.model_selection import GridSearchCV, cross_val_score
+from sklearn.ensemble import RandomForestClassifier
+import numpy as np
+
+# Inner CV: select best hyperparameters
+param_grid = {'n_estimators': [50, 100, 200], 'max_depth': [3, 5, None]}
+inner_cv = StratifiedKFold(n_splits=3, shuffle=True, random_state=1)
+outer_cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=2)
+
+clf = GridSearchCV(RandomForestClassifier(random_state=42),
+                   param_grid, cv=inner_cv, scoring='f1', n_jobs=-1)
+
+# Outer CV: unbiased performance estimate
+outer_scores = cross_val_score(clf, X, y, cv=outer_cv,
+                               scoring='f1', n_jobs=-1)
+print(f"Nested CV F1: {outer_scores.mean():.3f} +/- {outer_scores.std():.3f}")
+
+# Compare to non-nested (optimistically biased)
+clf_simple = GridSearchCV(RandomForestClassifier(random_state=42),
+                          param_grid, cv=5, scoring='f1', n_jobs=-1)
+clf_simple.fit(X, y)
+print(f"Non-nested best CV F1: {clf_simple.best_score_:.3f}  (optimistic)")
+</code></pre>
+</section>
+<section>
+<h2>Time Series Cross-Validation</h2>
+<p>For sequential data, random splitting causes leakage — future data is used to predict the past. Use <code>TimeSeriesSplit</code> which always trains on past data and validates on future data.</p>
+<pre><code class="language-python">from sklearn.model_selection import TimeSeriesSplit
+import numpy as np
+
+X_ts = np.random.randn(1000, 5)
+y_ts = np.random.randn(1000)
+
+tscv = TimeSeriesSplit(n_splits=5)
+for fold, (train_idx, val_idx) in enumerate(tscv.split(X_ts)):
+    print(f"Fold {fold+1}: train=[{train_idx[0]}:{train_idx[-1]}], "
+          f"val=[{val_idx[0]}:{val_idx[-1]}]")
+# Each fold: training window grows, validation always in the future
+</code></pre>
+</section>
+<section>
+<h2>Review Questions</h2>
+<div class="quiz-card" data-answer="C">
+<p><strong>Q1.</strong> Why does nested CV give a less biased performance estimate than simple CV with hyperparameter tuning?</p>
+<label class="quiz-option"><input type="radio" name="q1" value="A"> It uses more data for training</label>
+<label class="quiz-option"><input type="radio" name="q1" value="B"> It always uses 10 folds</label>
+<label class="quiz-option"><input type="radio" name="q1" value="C"> The outer evaluation loop never sees the data used in hyperparameter selection</label>
+<label class="quiz-option"><input type="radio" name="q1" value="D"> It averages across more models</label>
+<button class="btn check-quiz" style="margin-top:.5rem">Check answer</button>
+</div>
+</section>
+</article><aside><nav class="toc"><h2>Contents</h2><ol id="tocList"></ol></nav></aside></div><footer class="footer"><p>&copy; <span id="year"></span> MS Machine Learning Interactive Learning Platform.</p></footer></div></main></div><script src="../../assets/js/nav-data.js"></script><script src="../../assets/js/search-index.js"></script><script src="../../assets/js/glossary-data.js"></script><script src="../../assets/js/site.js"></script><script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script><script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script></body></html>

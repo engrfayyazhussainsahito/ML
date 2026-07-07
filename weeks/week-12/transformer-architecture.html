@@ -1,0 +1,121 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Lesson 12.2: The Transformer Architecture | MS Machine Learning</title><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link rel="stylesheet" href="../../assets/css/styles.css"><link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css"></head><body data-root="../../" data-page-id="week-12/lesson-12-2" data-title="Lesson 12.2: The Transformer Architecture"><a class="skip-link" href="#main">Skip to main content</a><div class="progress" id="readingProgress"></div><div class="mobile-topbar"><button id="openSidebar">&#9776; Navigation</button><span style="font-family:var(--serif);font-weight:700;font-size:.95rem">MS Machine Learning</span><button class="theme-toggle">&#127769; Dark mode</button></div><div class="site-shell"><aside class="sidebar" id="sidebar"><div class="brand"><span class="brand-mark">ML</span><div><h1>Machine Learning</h1><small>Interactive Learning Platform</small></div></div><button id="closeSidebar" class="btn" style="margin:.25rem 0">&#10005; Close</button><div class="nav-search"><label for="navSearch">Search lessons</label><input id="navSearch" class="site-search-input" type="search" placeholder="Type to search&#8230;" autocomplete="off"><div class="mini-results search-results"></div></div><nav id="courseNav"></nav><section class="nav-group"><div class="nav-group-title">Your Progress</div><div id="progressList" class="progress-list small"></div></section></aside><main class="main" id="main"><div class="page-wrap"><nav class="breadcrumbs"><a href="../../index.html">Home</a><span>Week 12 · Transformers</span></nav><section class="hero"><div class="eyebrow">Week 12 · Transformers</div><h1 class="page-title">Lesson 12.2: The Transformer Architecture</h1><div class="toolbar"><button id="bookmarkBtn" class="btn">&#9734; Bookmark</button><button id="completeBtn" class="btn">Mark complete</button><button id="quizModeBtn" class="btn">&#127919; Start quiz mode</button><button class="print-page btn">&#128424; Print</button><button class="theme-toggle btn">&#127769; Dark mode</button></div></section><div class="layout-article"><article class="article" id="articleBody"><section>
+<h2>The Transformer Architecture</h2>
+<p>Vaswani et al. (2017) "Attention Is All You Need" replaced recurrence entirely with self-attention. The Transformer processes all tokens in parallel (not sequentially), scales to massive datasets, and has become the dominant architecture for NLP, vision, audio, and multimodal tasks.</p>
+</section>
+<section>
+<h2>The Full Encoder Block</h2>
+<pre><code class="language-python">import torch, torch.nn as nn, math
+
+class TransformerEncoderBlock(nn.Module):
+    """One Transformer encoder layer: multi-head attention + FFN + residuals."""
+    def __init__(self, d_model, n_heads, d_ff, dropout=0.1):
+        super().__init__()
+        assert d_model % n_heads == 0
+        d_k = d_model // n_heads
+
+        self.attention = nn.MultiheadAttention(d_model, n_heads,
+                                               dropout=dropout, batch_first=True)
+        self.ffn = nn.Sequential(
+            nn.Linear(d_model, d_ff),
+            nn.GELU(),
+            nn.Dropout(dropout),
+            nn.Linear(d_ff, d_model),
+        )
+        self.norm1 = nn.LayerNorm(d_model)
+        self.norm2 = nn.LayerNorm(d_model)
+        self.drop  = nn.Dropout(dropout)
+
+    def forward(self, x, src_key_padding_mask=None):
+        # Pre-norm variant (more stable than original post-norm)
+        x_norm = self.norm1(x)
+        attn_out, attn_weights = self.attention(
+            x_norm, x_norm, x_norm,      # Q=K=V=x (self-attention)
+            key_padding_mask=src_key_padding_mask
+        )
+        x = x + self.drop(attn_out)      # residual connection
+
+        x_norm = self.norm2(x)
+        x = x + self.drop(self.ffn(x_norm))   # FFN + residual
+        return x, attn_weights
+
+block = TransformerEncoderBlock(d_model=512, n_heads=8, d_ff=2048)
+x = torch.randn(2, 16, 512)   # (batch=2, seq_len=16, d_model=512)
+out, weights = block(x)
+print(f"Output:  {out.shape}")     # (2, 16, 512)
+print(f"Weights: {weights.shape}") # (2, 16, 16) attention matrix
+</code></pre>
+</section>
+<section>
+<h2>Positional Encoding</h2>
+<pre><code class="language-python">import torch, math
+
+class PositionalEncoding(nn.Module):
+    """Sinusoidal positional encoding (original Transformer)."""
+    def __init__(self, d_model, max_len=5000, dropout=0.1):
+        super().__init__()
+        self.dropout = nn.Dropout(dropout)
+
+        pe = torch.zeros(max_len, d_model)
+        position = torch.arange(0, max_len).unsqueeze(1).float()
+        div_term = torch.exp(torch.arange(0, d_model, 2).float()
+                             * (-math.log(10000.0) / d_model))
+        pe[:, 0::2] = torch.sin(position * div_term)
+        pe[:, 1::2] = torch.cos(position * div_term)
+        self.register_buffer('pe', pe.unsqueeze(0))   # (1, max_len, d_model)
+
+    def forward(self, x):
+        # x: (batch, seq_len, d_model)
+        x = x + self.pe[:, :x.size(1)]
+        return self.dropout(x)
+
+pe = PositionalEncoding(d_model=512)
+x = torch.randn(2, 16, 512)
+print(pe(x).shape)   # (2, 16, 512) — positions encoded in last dim
+</code></pre>
+</section>
+<section>
+<h2>Full Encoder Stack</h2>
+<pre><code class="language-python">class TransformerEncoder(nn.Module):
+    def __init__(self, vocab_size, d_model, n_heads, d_ff, n_layers,
+                 max_len=512, dropout=0.1):
+        super().__init__()
+        self.embedding = nn.Embedding(vocab_size, d_model, padding_idx=0)
+        self.pe = PositionalEncoding(d_model, max_len, dropout)
+        self.layers = nn.ModuleList([
+            TransformerEncoderBlock(d_model, n_heads, d_ff, dropout)
+            for _ in range(n_layers)
+        ])
+        self.norm = nn.LayerNorm(d_model)
+
+    def forward(self, tokens, padding_mask=None):
+        x = self.pe(self.embedding(tokens) * math.sqrt(self.embedding.embedding_dim))
+        attn_maps = []
+        for layer in self.layers:
+            x, attn = layer(x, padding_mask)
+            attn_maps.append(attn)
+        return self.norm(x), attn_maps
+
+# BERT-base equivalent dimensions
+encoder = TransformerEncoder(vocab_size=30522, d_model=768, n_heads=12,
+                              d_ff=3072, n_layers=12)
+tokens = torch.randint(1, 30522, (2, 64))
+out, attn_maps = encoder(tokens)
+print(f"Encoder output: {out.shape}")         # (2, 64, 768)
+print(f"Attention maps: {len(attn_maps)}")    # 12 layers
+print(f"  Each map:     {attn_maps[0].shape}")  # (2, 64, 64)
+total = sum(p.numel() for p in encoder.parameters())
+print(f"Parameters: {total/1e6:.0f}M")   # ~110M — BERT-base
+</code></pre>
+</section>
+<section>
+<h2>Review Questions</h2>
+<div class="quiz-card" data-answer="D">
+<p><strong>Q1.</strong> Why does the Transformer scale better than RNNs to long sequences on modern hardware?</p>
+<label class="quiz-option"><input type="radio" name="q1" value="A"> Transformers use fewer parameters</label>
+<label class="quiz-option"><input type="radio" name="q1" value="B"> RNNs require more memory</label>
+<label class="quiz-option"><input type="radio" name="q1" value="C"> Transformers use simpler activation functions</label>
+<label class="quiz-option"><input type="radio" name="q1" value="D"> Self-attention processes all tokens in parallel rather than sequentially, enabling full GPU utilisation</label>
+<button class="btn check-quiz" style="margin-top:.5rem">Check answer</button>
+</div>
+</section>
+</article><aside><nav class="toc"><h2>Contents</h2><ol id="tocList"></ol></nav></aside></div><footer class="footer"><p>&copy; <span id="year"></span> MS Machine Learning Interactive Learning Platform.</p></footer></div></main></div><script src="../../assets/js/nav-data.js"></script><script src="../../assets/js/search-index.js"></script><script src="../../assets/js/glossary-data.js"></script><script src="../../assets/js/site.js"></script><script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script><script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script></body></html>

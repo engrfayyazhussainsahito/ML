@@ -1,0 +1,119 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Lesson 3.4: Classification Metrics | MS Machine Learning</title><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link rel="stylesheet" href="../../assets/css/styles.css"><link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css"></head><body data-root="../../" data-page-id="week-03/lesson-3-4" data-title="Lesson 3.4: Classification Metrics"><a class="skip-link" href="#main">Skip to main content</a><div class="progress" id="readingProgress"></div><div class="mobile-topbar"><button id="openSidebar">&#9776; Navigation</button><span style="font-family:var(--serif);font-weight:700;font-size:.95rem">MS Machine Learning</span><button class="theme-toggle">&#127769; Dark mode</button></div><div class="site-shell"><aside class="sidebar" id="sidebar"><div class="brand"><span class="brand-mark">ML</span><div><h1>Machine Learning</h1><small>Interactive Learning Platform</small></div></div><button id="closeSidebar" class="btn" style="margin:.25rem 0">&#10005; Close</button><div class="nav-search"><label for="navSearch">Search lessons</label><input id="navSearch" class="site-search-input" type="search" placeholder="Type to search&#8230;" autocomplete="off"><div class="mini-results search-results"></div></div><nav id="courseNav"></nav><section class="nav-group"><div class="nav-group-title">Your Progress</div><div id="progressList" class="progress-list small"></div></section></aside><main class="main" id="main"><div class="page-wrap"><nav class="breadcrumbs"><a href="../../index.html">Home</a><span>Week 3 · Classification</span></nav><section class="hero"><div class="eyebrow">Week 3 · Classification</div><h1 class="page-title">Lesson 3.4: Classification Metrics</h1><div class="toolbar"><button id="bookmarkBtn" class="btn">&#9734; Bookmark</button><button id="completeBtn" class="btn">Mark complete</button><button id="quizModeBtn" class="btn">&#127919; Start quiz mode</button><button class="print-page btn">&#128424; Print</button><button class="theme-toggle btn">&#127769; Dark mode</button></div></section><div class="layout-article"><article class="article" id="articleBody"><section>
+<h2>Beyond Accuracy</h2>
+<p>Accuracy = correct predictions / total predictions. It is misleading for imbalanced datasets. If 95% of credit card transactions are legitimate, a model that always predicts "not fraud" achieves 95% accuracy while detecting zero fraud. We need metrics that evaluate performance on each class separately.</p>
+</section>
+<section>
+<h2>The Confusion Matrix</h2>
+<pre><code class="language-python">from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay
+import numpy as np
+
+y_true = np.array([0,0,0,0,1,1,1,1,1,1])
+y_pred = np.array([0,0,1,0,1,0,1,1,1,0])
+
+cm = confusion_matrix(y_true, y_pred)
+print(cm)
+# [[TN, FP],
+#  [FN, TP]]
+
+tn, fp, fn, tp = cm.ravel()
+print(f"TN={tn}, FP={fp}, FN={fn}, TP={tp}")
+</code></pre>
+<table>
+<thead><tr><th></th><th>Predicted Negative</th><th>Predicted Positive</th></tr></thead>
+<tbody>
+<tr><td><strong>Actual Negative</strong></td><td>TN (true negative)</td><td>FP (false positive, Type I error)</td></tr>
+<tr><td><strong>Actual Positive</strong></td><td>FN (false negative, Type II error)</td><td>TP (true positive)</td></tr>
+</tbody>
+</table>
+</section>
+<section>
+<h2>Precision, Recall, and F1</h2>
+<pre><code class="language-python">from sklearn.metrics import precision_score, recall_score, f1_score
+
+# Precision: of all predicted positives, how many are truly positive?
+# Precision = TP / (TP + FP)
+precision = precision_score(y_true, y_pred)
+
+# Recall (sensitivity): of all true positives, how many did we catch?
+# Recall = TP / (TP + FN)
+recall = recall_score(y_true, y_pred)
+
+# F1: harmonic mean of precision and recall
+# F1 = 2 * (P * R) / (P + R)
+f1 = f1_score(y_true, y_pred)
+
+print(f"Precision: {precision:.3f}")
+print(f"Recall:    {recall:.3f}")
+print(f"F1 score:  {f1:.3f}")
+
+# F-beta: weight recall beta times more than precision
+from sklearn.metrics import fbeta_score
+f2 = fbeta_score(y_true, y_pred, beta=2)   # recall matters 2x more
+print(f"F2 score:  {f2:.3f}")
+</code></pre>
+<div class="callout">Precision vs recall tradeoff: improving one typically degrades the other. The right balance depends on application cost. For cancer screening: maximise recall (missing a case is catastrophic). For spam filtering: maximise precision (false positives delete real emails).</div>
+</section>
+<section>
+<h2>ROC Curve and AUC</h2>
+<p>The ROC (Receiver Operating Characteristic) curve plots True Positive Rate vs False Positive Rate across all classification thresholds. AUC (Area Under the Curve) summarises this into a single number: probability that the model ranks a random positive example higher than a random negative one.</p>
+<pre><code class="language-python">from sklearn.metrics import roc_curve, roc_auc_score
+from sklearn.linear_model import LogisticRegression
+from sklearn.datasets import make_classification
+from sklearn.model_selection import train_test_split
+import numpy as np
+
+X, y = make_classification(n_samples=1000, random_state=42)
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2)
+
+model = LogisticRegression().fit(X_train, y_train)
+proba = model.predict_proba(X_test)[:, 1]
+
+fpr, tpr, thresholds = roc_curve(y_test, proba)
+auc = roc_auc_score(y_test, proba)
+print(f"AUC: {auc:.3f}")
+# 0.5 = random; 1.0 = perfect; < 0.5 = worse than random (flip predictions)
+
+# Precision-Recall AUC (better for imbalanced datasets)
+from sklearn.metrics import average_precision_score
+ap = average_precision_score(y_test, proba)
+print(f"Average Precision: {ap:.3f}")
+</code></pre>
+</section>
+<section>
+<h2>Multi-class Metrics</h2>
+<pre><code class="language-python">from sklearn.metrics import classification_report
+from sklearn.datasets import load_iris
+from sklearn.ensemble import RandomForestClassifier
+
+X, y = load_iris(return_X_y=True)
+clf = RandomForestClassifier(random_state=42).fit(X, y)
+y_pred = clf.predict(X)
+
+print(classification_report(y, y_pred, target_names=load_iris().target_names))
+# Shows per-class precision, recall, F1; macro/micro/weighted averages
+
+# Macro: unweighted mean per class (treats all classes equally)
+# Micro: aggregate TP/FP/FN across all classes (weights by frequency)
+# Weighted: macro weighted by class support (n samples per class)
+</code></pre>
+</section>
+<section>
+<h2>Review Questions</h2>
+<div class="quiz-card" data-answer="B">
+<p><strong>Q1.</strong> For a disease screening test, which metric is most critical to maximise?</p>
+<label class="quiz-option"><input type="radio" name="q1" value="A"> Precision — to avoid unnecessary treatment</label>
+<label class="quiz-option"><input type="radio" name="q1" value="B"> Recall — to avoid missing sick patients</label>
+<label class="quiz-option"><input type="radio" name="q1" value="C"> Accuracy — because it is the most commonly used</label>
+<label class="quiz-option"><input type="radio" name="q1" value="D"> AUC — because it is threshold-independent</label>
+<button class="btn check-quiz" style="margin-top:.5rem">Check answer</button>
+</div>
+<div class="quiz-card" data-answer="D">
+<p><strong>Q2.</strong> AUC = 0.5 means:</p>
+<label class="quiz-option"><input type="radio" name="q2" value="A"> The model is perfectly calibrated</label>
+<label class="quiz-option"><input type="radio" name="q2" value="B"> The model achieves 50% accuracy</label>
+<label class="quiz-option"><input type="radio" name="q2" value="C"> The model has 50% precision</label>
+<label class="quiz-option"><input type="radio" name="q2" value="D"> The model is no better than random guessing</label>
+<button class="btn check-quiz" style="margin-top:.5rem">Check answer</button>
+</div>
+</section>
+</article><aside><nav class="toc"><h2>Contents</h2><ol id="tocList"></ol></nav></aside></div><footer class="footer"><p>&copy; <span id="year"></span> MS Machine Learning Interactive Learning Platform.</p></footer></div></main></div><script src="../../assets/js/nav-data.js"></script><script src="../../assets/js/search-index.js"></script><script src="../../assets/js/glossary-data.js"></script><script src="../../assets/js/site.js"></script><script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script><script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script></body></html>

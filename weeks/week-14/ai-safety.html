@@ -1,0 +1,113 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Lesson 14.4: AI Safety and Alignment | MS Machine Learning</title><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link rel="stylesheet" href="../../assets/css/styles.css"><link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css"></head><body data-root="../../" data-page-id="week-14/lesson-14-4" data-title="Lesson 14.4: AI Safety and Alignment"><a class="skip-link" href="#main">Skip to main content</a><div class="progress" id="readingProgress"></div><div class="mobile-topbar"><button id="openSidebar">&#9776; Navigation</button><span style="font-family:var(--serif);font-weight:700;font-size:.95rem">MS Machine Learning</span><button class="theme-toggle">&#127769; Dark mode</button></div><div class="site-shell"><aside class="sidebar" id="sidebar"><div class="brand"><span class="brand-mark">ML</span><div><h1>Machine Learning</h1><small>Interactive Learning Platform</small></div></div><button id="closeSidebar" class="btn" style="margin:.25rem 0">&#10005; Close</button><div class="nav-search"><label for="navSearch">Search lessons</label><input id="navSearch" class="site-search-input" type="search" placeholder="Type to search&#8230;" autocomplete="off"><div class="mini-results search-results"></div></div><nav id="courseNav"></nav><section class="nav-group"><div class="nav-group-title">Your Progress</div><div id="progressList" class="progress-list small"></div></section></aside><main class="main" id="main"><div class="page-wrap"><nav class="breadcrumbs"><a href="../../index.html">Home</a><span>Week 14 · Responsible AI</span></nav><section class="hero"><div class="eyebrow">Week 14 · Responsible AI</div><h1 class="page-title">Lesson 14.4: AI Safety and Alignment</h1><div class="toolbar"><button id="bookmarkBtn" class="btn">&#9734; Bookmark</button><button id="completeBtn" class="btn">Mark complete</button><button id="quizModeBtn" class="btn">&#127919; Start quiz mode</button><button class="print-page btn">&#128424; Print</button><button class="theme-toggle btn">&#127769; Dark mode</button></div></section><div class="layout-article"><article class="article" id="articleBody"><section>
+<h2>Why AI Safety?</h2>
+<p>As ML systems grow more capable and are deployed in high-stakes settings, failures become increasingly consequential. AI safety is the study of how to build systems that do what we intend, even as they become more capable. It is not science fiction — current systems exhibit reward hacking, specification gaming, and distributional shift failures in production.</p>
+</section>
+<section>
+<h2>Specification Problems</h2>
+<pre><code class="language-python">import numpy as np
+
+# Reward hacking: an agent optimises the specified objective
+# in an unintended way that satisfies the letter but not the spirit of the reward
+
+class BoatRacingEnv:
+    """Simplified boat race game. Intended reward: finish race quickly."""
+    def __init__(self):
+        self.score = 0        # proxy reward: targets hit
+        self.position = 0     # true objective: finish line position
+
+    def step(self, action):
+        if action == 'collect_target':
+            self.score += 1   # easy reward
+        elif action == 'move_forward':
+            self.position += 1   # hard: requires skill
+
+# Real OpenAI experiment: RL agent discovered spinning in circles
+# collecting reward targets without making progress toward the finish line
+# The agent optimised the proxy perfectly but failed the true objective
+
+# Classic examples:
+examples = {
+    "Reward hacking":     "Grasping robot tumbles object instead of picking it up",
+    "Specification gaming": "Cleaning robot hides mess instead of cleaning it",
+    "Mesa-optimisation":  "Inner model optimises different objective from outer training",
+    "Goal misgeneralisation": "Model pursues a proxy that happens to correlate with goal in training but not deployment"
+}
+for problem, example in examples.items():
+    print(f"{problem}: {example}")
+</code></pre>
+</section>
+<section>
+<h2>Distributional Shift</h2>
+<pre><code class="language-python">from sklearn.datasets import make_classification
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.metrics import accuracy_score
+import numpy as np
+
+# Train on data from one distribution
+X_train, y_train = make_classification(n_samples=1000, n_features=10,
+                                        n_informative=5, random_state=42)
+model = RandomForestClassifier(n_estimators=100, random_state=42).fit(X_train, y_train)
+print(f"In-distribution accuracy: {model.score(X_train, y_train):.3f}")
+
+# Deploy on data from a shifted distribution (e.g. different hospital, year, demographic)
+X_shift = X_train + np.random.randn(*X_train.shape) * 2.0   # covariate shift
+y_shift = y_train.copy()
+
+shift_acc = accuracy_score(y_shift, model.predict(X_shift))
+print(f"Shifted distribution accuracy: {shift_acc:.3f}")
+# Often drops significantly
+
+# Detection: monitor input distribution statistics in production
+def detect_drift(X_train, X_new, threshold=2.0):
+    train_mean = X_train.mean(axis=0)
+    train_std  = X_train.std(axis=0)
+    z_scores   = np.abs((X_new.mean(axis=0) - train_mean) / (train_std + 1e-8))
+    drifted    = z_scores > threshold
+    if drifted.any():
+        print(f"DRIFT DETECTED in features: {np.where(drifted)[0]}")
+    return drifted
+
+detect_drift(X_train, X_shift)
+</code></pre>
+</section>
+<section>
+<h2>Adversarial Robustness</h2>
+<pre><code class="language-python">import torch, torch.nn as nn
+
+def fgsm_attack(model, x, y_true, epsilon=0.03):
+    """
+    Fast Gradient Sign Method (Goodfellow et al., 2014).
+    Add imperceptible perturbation to cause misclassification.
+    """
+    x_adv = x.clone().requires_grad_(True)
+    loss = nn.CrossEntropyLoss()(model(x_adv), y_true)
+    loss.backward()
+    # Perturb in direction of gradient sign — maximises loss
+    x_adv = x_adv + epsilon * x_adv.grad.sign()
+    x_adv = x_adv.clamp(0, 1)   # keep in valid pixel range
+    return x_adv.detach()
+
+# Adversarial training: train on both clean and adversarial examples
+def adversarial_train_step(model, x, y, opt, epsilon=0.03):
+    model.train()
+    x_adv = fgsm_attack(model, x, y, epsilon)
+    opt.zero_grad()
+    loss_clean = nn.CrossEntropyLoss()(model(x), y)
+    loss_adv   = nn.CrossEntropyLoss()(model(x_adv), y)
+    loss = (loss_clean + loss_adv) / 2
+    loss.backward(); opt.step()
+    return loss.item()
+</code></pre>
+</section>
+<section>
+<h2>Review Questions</h2>
+<div class="quiz-card" data-answer="D">
+<p><strong>Q1.</strong> A cleaning robot that hides mess under rugs instead of removing it is an example of:</p>
+<label class="quiz-option"><input type="radio" name="q1" value="A"> Distributional shift</label>
+<label class="quiz-option"><input type="radio" name="q1" value="B"> Adversarial attack</label>
+<label class="quiz-option"><input type="radio" name="q1" value="C"> Mode collapse</label>
+<label class="quiz-option"><input type="radio" name="q1" value="D"> Specification gaming — the agent found a loophole in the reward that satisfies its letter but not its intent</label>
+<button class="btn check-quiz" style="margin-top:.5rem">Check answer</button>
+</div>
+</section>
+</article><aside><nav class="toc"><h2>Contents</h2><ol id="tocList"></ol></nav></aside></div><footer class="footer"><p>&copy; <span id="year"></span> MS Machine Learning Interactive Learning Platform.</p></footer></div></main></div><script src="../../assets/js/nav-data.js"></script><script src="../../assets/js/search-index.js"></script><script src="../../assets/js/glossary-data.js"></script><script src="../../assets/js/site.js"></script><script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script><script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script></body></html>

@@ -1,0 +1,99 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Lesson 2.4: Regression Metrics | MS Machine Learning</title><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link rel="stylesheet" href="../../assets/css/styles.css"><link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css"></head><body data-root="../../" data-page-id="week-02/lesson-2-4" data-title="Lesson 2.4: Regression Metrics"><a class="skip-link" href="#main">Skip to main content</a><div class="progress" id="readingProgress"></div><div class="mobile-topbar"><button id="openSidebar">&#9776; Navigation</button><span style="font-family:var(--serif);font-weight:700;font-size:.95rem">MS Machine Learning</span><button class="theme-toggle">&#127769; Dark mode</button></div><div class="site-shell"><aside class="sidebar" id="sidebar"><div class="brand"><span class="brand-mark">ML</span><div><h1>Machine Learning</h1><small>Interactive Learning Platform</small></div></div><button id="closeSidebar" class="btn" style="margin:.25rem 0">&#10005; Close</button><div class="nav-search"><label for="navSearch">Search lessons</label><input id="navSearch" class="site-search-input" type="search" placeholder="Type to search&#8230;" autocomplete="off"><div class="mini-results search-results"></div></div><nav id="courseNav"></nav><section class="nav-group"><div class="nav-group-title">Your Progress</div><div id="progressList" class="progress-list small"></div></section></aside><main class="main" id="main"><div class="page-wrap"><nav class="breadcrumbs"><a href="../../index.html">Home</a><span>Week 2 · Regression</span></nav><section class="hero"><div class="eyebrow">Week 2 · Regression</div><h1 class="page-title">Lesson 2.4: Regression Metrics</h1><div class="toolbar"><button id="bookmarkBtn" class="btn">&#9734; Bookmark</button><button id="completeBtn" class="btn">Mark complete</button><button id="quizModeBtn" class="btn">&#127919; Start quiz mode</button><button class="print-page btn">&#128424; Print</button><button class="theme-toggle btn">&#127769; Dark mode</button></div></section><div class="layout-article"><article class="article" id="articleBody"><section>
+<h2>Why Metrics Matter</h2>
+<p>The choice of evaluation metric directly shapes what a model learns. A model trained to minimise MSE will trade many small errors for fewer large errors; a model minimising MAE is more robust to outliers. Choosing the wrong metric produces models that are technically good on paper but wrong for the application.</p>
+</section>
+<section>
+<h2>Mean Squared Error (MSE) and RMSE</h2>
+<p>MSE = (1/n) Σ(yᵢ - ŷᵢ)². It penalises large errors quadratically. RMSE = √MSE brings the metric back to the units of y, making it interpretable.</p>
+<pre><code class="language-python">import numpy as np
+from sklearn.metrics import mean_squared_error
+
+y_true = np.array([3.0, -0.5, 2.0, 7.0, 4.5])
+y_pred = np.array([2.5,  0.0, 2.1, 6.2, 4.8])
+
+mse  = mean_squared_error(y_true, y_pred)
+rmse = np.sqrt(mse)
+print(f"MSE:  {mse:.4f}")
+print(f"RMSE: {rmse:.4f}")   # same units as y
+
+# Manual: verify the formula
+manual_mse = ((y_true - y_pred)**2).mean()
+assert abs(mse - manual_mse) < 1e-10
+</code></pre>
+<div class="callout">RMSE is the most common regression metric in ML competitions (Kaggle, etc.). But it is sensitive to outliers — a single large error can dominate the metric.</div>
+</section>
+<section>
+<h2>Mean Absolute Error (MAE)</h2>
+<p>MAE = (1/n) Σ|yᵢ - ŷᵢ|. It penalises all errors equally regardless of magnitude. MAE is more robust to outliers than MSE and is easier to interpret — it is the average absolute prediction error in units of y.</p>
+<pre><code class="language-python">from sklearn.metrics import mean_absolute_error
+
+mae = mean_absolute_error(y_true, y_pred)
+print(f"MAE: {mae:.4f}")   # average |error| in y's units
+
+# Huber loss: quadratic for small errors, linear for large — best of both
+from sklearn.linear_model import HuberRegressor
+huber = HuberRegressor(epsilon=1.35)   # epsilon controls the transition
+huber.fit(X_train.reshape(-1,1), y_train)
+</code></pre>
+</section>
+<section>
+<h2>R² (Coefficient of Determination)</h2>
+<p>R² = 1 - SS_res/SS_tot where SS_res = Σ(y-ŷ)² and SS_tot = Σ(y-ȳ)². It measures the proportion of variance in y explained by the model. R²=1 is perfect; R²=0 means the model is no better than predicting the mean; R²&lt;0 is possible (model worse than mean).</p>
+<pre><code class="language-python">from sklearn.metrics import r2_score
+import numpy as np
+
+r2 = r2_score(y_true, y_pred)
+print(f"R²: {r2:.4f}")
+
+# Adjusted R² — penalises adding useless features
+n, p = 1000, 10
+adj_r2 = 1 - (1 - r2) * (n - 1) / (n - p - 1)
+print(f"Adjusted R²: {adj_r2:.4f}")
+
+# Warning: R² is not comparable across datasets with different y variances
+# A low-variance dataset can give high R² even for a poor model
+</code></pre>
+</section>
+<section>
+<h2>Mean Absolute Percentage Error (MAPE)</h2>
+<pre><code class="language-python">import numpy as np
+
+def mape(y_true, y_pred, eps=1e-10):
+    """MAPE — expresses error as % of true value. Undefined when y_true=0."""
+    return np.mean(np.abs((y_true - y_pred) / (np.abs(y_true) + eps))) * 100
+
+y_true_pos = np.array([100, 200, 150, 300])
+y_pred_pos = np.array([110, 190, 160, 280])
+print(f"MAPE: {mape(y_true_pos, y_pred_pos):.1f}%")
+
+# Symmetric MAPE (sMAPE): avoids asymmetry and division-by-zero issues
+def smape(y_true, y_pred):
+    return 200 * np.mean(
+        np.abs(y_pred - y_true) / (np.abs(y_true) + np.abs(y_pred) + 1e-10))
+</code></pre>
+</section>
+<section>
+<h2>Choosing the Right Metric</h2>
+<table>
+<thead><tr><th>Metric</th><th>Use when</th><th>Sensitive to outliers?</th></tr></thead>
+<tbody>
+<tr><td>RMSE</td><td>Large errors are especially costly</td><td>Yes (quadratic penalty)</td></tr>
+<tr><td>MAE</td><td>All errors equally important; outliers present</td><td>No</td></tr>
+<tr><td>R²</td><td>Comparing models on the same dataset</td><td>Moderately</td></tr>
+<tr><td>MAPE</td><td>Relative error matters (e.g. forecasting)</td><td>No, but undefined at zero</td></tr>
+<tr><td>Huber</td><td>Robustness needed; outliers but some tolerance</td><td>Configurable via epsilon</td></tr>
+</tbody>
+</table>
+</section>
+<section>
+<h2>Review Questions</h2>
+<div class="quiz-card" data-answer="A">
+<p><strong>Q1.</strong> A single outlier with a true value of 100 and prediction of 1000 would most distort which metric?</p>
+<label class="quiz-option"><input type="radio" name="q1" value="A"> RMSE — because it squares residuals</label>
+<label class="quiz-option"><input type="radio" name="q1" value="B"> MAE — because it uses absolute values</label>
+<label class="quiz-option"><input type="radio" name="q1" value="C"> R² — because it depends on the mean</label>
+<label class="quiz-option"><input type="radio" name="q1" value="D"> MAPE — because it divides by y_true</label>
+<button class="btn check-quiz" style="margin-top:.5rem">Check answer</button>
+</div>
+</section>
+</article><aside><nav class="toc"><h2>Contents</h2><ol id="tocList"></ol></nav></aside></div><footer class="footer"><p>&copy; <span id="year"></span> MS Machine Learning Interactive Learning Platform.</p></footer></div></main></div><script src="../../assets/js/nav-data.js"></script><script src="../../assets/js/search-index.js"></script><script src="../../assets/js/glossary-data.js"></script><script src="../../assets/js/site.js"></script><script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script><script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script></body></html>

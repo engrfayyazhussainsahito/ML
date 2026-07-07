@@ -1,0 +1,107 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Lesson 6.1: K-Means Clustering | MS Machine Learning</title><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link rel="stylesheet" href="../../assets/css/styles.css"><link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css"></head><body data-root="../../" data-page-id="week-06/lesson-6-1" data-title="Lesson 6.1: K-Means Clustering"><a class="skip-link" href="#main">Skip to main content</a><div class="progress" id="readingProgress"></div><div class="mobile-topbar"><button id="openSidebar">&#9776; Navigation</button><span style="font-family:var(--serif);font-weight:700;font-size:.95rem">MS Machine Learning</span><button class="theme-toggle">&#127769; Dark mode</button></div><div class="site-shell"><aside class="sidebar" id="sidebar"><div class="brand"><span class="brand-mark">ML</span><div><h1>Machine Learning</h1><small>Interactive Learning Platform</small></div></div><button id="closeSidebar" class="btn" style="margin:.25rem 0">&#10005; Close</button><div class="nav-search"><label for="navSearch">Search lessons</label><input id="navSearch" class="site-search-input" type="search" placeholder="Type to search&#8230;" autocomplete="off"><div class="mini-results search-results"></div></div><nav id="courseNav"></nav><section class="nav-group"><div class="nav-group-title">Your Progress</div><div id="progressList" class="progress-list small"></div></section></aside><main class="main" id="main"><div class="page-wrap"><nav class="breadcrumbs"><a href="../../index.html">Home</a><span>Week 6 · Unsupervised Learning</span></nav><section class="hero"><div class="eyebrow">Week 6 · Unsupervised Learning</div><h1 class="page-title">Lesson 6.1: K-Means Clustering</h1><div class="toolbar"><button id="bookmarkBtn" class="btn">&#9734; Bookmark</button><button id="completeBtn" class="btn">Mark complete</button><button id="quizModeBtn" class="btn">&#127919; Start quiz mode</button><button class="print-page btn">&#128424; Print</button><button class="theme-toggle btn">&#127769; Dark mode</button></div></section><div class="layout-article"><article class="article" id="articleBody"><section>
+<h2>The K-Means Algorithm</h2>
+<p>K-means partitions n data points into k clusters by minimising the within-cluster sum of squared distances (inertia). It alternates between two steps: (1) assign each point to its nearest centroid, (2) update each centroid to the mean of its assigned points. This is guaranteed to converge but not to find the global optimum.</p>
+<pre><code class="language-python">import numpy as np
+
+def kmeans(X, k, max_iter=300, tol=1e-4, random_state=42):
+    rng = np.random.RandomState(random_state)
+    # Initialise centroids by sampling k random points
+    idx = rng.choice(len(X), k, replace=False)
+    centroids = X[idx].copy()
+
+    for iteration in range(max_iter):
+        # E-step: assign each point to nearest centroid
+        dists = np.linalg.norm(X[:, None] - centroids[None], axis=2)  # (n, k)
+        labels = dists.argmin(axis=1)
+
+        # M-step: update centroids
+        new_centroids = np.array([X[labels==j].mean(axis=0)
+                                  if (labels==j).sum() > 0 else centroids[j]
+                                  for j in range(k)])
+
+        shift = np.linalg.norm(new_centroids - centroids)
+        centroids = new_centroids
+        if shift < tol:
+            print(f"Converged at iteration {iteration+1}")
+            break
+
+    inertia = sum(np.linalg.norm(X[labels==j] - centroids[j])**2
+                  for j in range(k))
+    return labels, centroids, inertia
+</code></pre>
+</section>
+<section>
+<h2>K-Means++ Initialisation</h2>
+<p>Random initialisation can produce poor results. K-means++ (Arthur & Vassilvitskii, 2007) spreads initial centroids apart using a probability proportional to distance — the first centroid is random, subsequent ones are chosen with probability proportional to their distance² from the nearest existing centroid. This gives a 16-competitive approximation guarantee.</p>
+<pre><code class="language-python">from sklearn.cluster import KMeans
+from sklearn.datasets import make_blobs
+from sklearn.preprocessing import StandardScaler
+import numpy as np
+
+X, y_true = make_blobs(n_samples=500, centers=5, cluster_std=0.8, random_state=42)
+X = StandardScaler().fit_transform(X)
+
+# init='k-means++' is the default — always use it
+km = KMeans(n_clusters=5, init='k-means++', n_init=10,
+            max_iter=300, random_state=42)
+km.fit(X)
+
+print(f"Inertia:         {km.inertia_:.2f}")
+print(f"Iterations:      {km.n_iter_}")
+
+# Adjusted Rand Index: measures agreement with true labels
+from sklearn.metrics import adjusted_rand_score, silhouette_score
+ari = adjusted_rand_score(y_true, km.labels_)
+sil = silhouette_score(X, km.labels_)
+print(f"Adj. Rand Index: {ari:.4f}  (1=perfect, 0=random)")
+print(f"Silhouette:      {sil:.4f}  (1=dense, -1=wrong cluster)")
+</code></pre>
+</section>
+<section>
+<h2>Choosing k: The Elbow Method</h2>
+<pre><code class="language-python">import numpy as np
+from sklearn.cluster import KMeans
+from sklearn.metrics import silhouette_score
+
+inertias, silhouettes = [], []
+k_range = range(2, 12)
+
+for k in k_range:
+    km = KMeans(n_clusters=k, n_init=10, random_state=42)
+    km.fit(X)
+    inertias.append(km.inertia_)
+    silhouettes.append(silhouette_score(X, km.labels_))
+
+# Elbow: look for the "kink" in the inertia curve
+print("k  | Inertia   | Silhouette")
+for k, iner, sil in zip(k_range, inertias, silhouettes):
+    print(f"{k:2d} | {iner:9.2f} | {sil:.4f}")
+
+best_k_sil = list(k_range)[np.argmax(silhouettes)]
+print(f"\nBest k by silhouette: {best_k_sil}")
+</code></pre>
+</section>
+<section>
+<h2>When K-Means Fails</h2>
+<table>
+<thead><tr><th>Problem</th><th>Symptom</th><th>Better algorithm</th></tr></thead>
+<tbody>
+<tr><td>Non-spherical clusters</td><td>Ring/moon shaped groups</td><td>DBSCAN, spectral clustering</td></tr>
+<tr><td>Different cluster sizes</td><td>Small clusters absorbed</td><td>Gaussian Mixture Models</td></tr>
+<tr><td>Different cluster densities</td><td>Dense clusters split</td><td>DBSCAN, HDBSCAN</td></tr>
+<tr><td>High dimensionality</td><td>All points equidistant</td><td>PCA first, then k-means</td></tr>
+</tbody>
+</table>
+</section>
+<section>
+<h2>Review Questions</h2>
+<div class="quiz-card" data-answer="D">
+<p><strong>Q1.</strong> K-means minimises:</p>
+<label class="quiz-option"><input type="radio" name="q1" value="A"> The number of clusters</label>
+<label class="quiz-option"><input type="radio" name="q1" value="B"> The maximum distance within any cluster</label>
+<label class="quiz-option"><input type="radio" name="q1" value="C"> The silhouette score</label>
+<label class="quiz-option"><input type="radio" name="q1" value="D"> Within-cluster sum of squared distances (inertia)</label>
+<button class="btn check-quiz" style="margin-top:.5rem">Check answer</button>
+</div>
+</section>
+</article><aside><nav class="toc"><h2>Contents</h2><ol id="tocList"></ol></nav></aside></div><footer class="footer"><p>&copy; <span id="year"></span> MS Machine Learning Interactive Learning Platform.</p></footer></div></main></div><script src="../../assets/js/nav-data.js"></script><script src="../../assets/js/search-index.js"></script><script src="../../assets/js/glossary-data.js"></script><script src="../../assets/js/site.js"></script><script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script><script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script></body></html>

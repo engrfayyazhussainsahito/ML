@@ -1,0 +1,113 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Lesson 16.5: Final Project and Defence | MS Machine Learning</title><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link rel="stylesheet" href="../../assets/css/styles.css"><link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css"></head><body data-root="../../" data-page-id="week-16/lesson-16-5" data-title="Lesson 16.5: Final Project and Defence"><a class="skip-link" href="#main">Skip to main content</a><div class="progress" id="readingProgress"></div><div class="mobile-topbar"><button id="openSidebar">&#9776; Navigation</button><span style="font-family:var(--serif);font-weight:700;font-size:.95rem">MS Machine Learning</span><button class="theme-toggle">&#127769; Dark mode</button></div><div class="site-shell"><aside class="sidebar" id="sidebar"><div class="brand"><span class="brand-mark">ML</span><div><h1>Machine Learning</h1><small>Interactive Learning Platform</small></div></div><button id="closeSidebar" class="btn" style="margin:.25rem 0">&#10005; Close</button><div class="nav-search"><label for="navSearch">Search lessons</label><input id="navSearch" class="site-search-input" type="search" placeholder="Type to search&#8230;" autocomplete="off"><div class="mini-results search-results"></div></div><nav id="courseNav"></nav><section class="nav-group"><div class="nav-group-title">Your Progress</div><div id="progressList" class="progress-list small"></div></section></aside><main class="main" id="main"><div class="page-wrap"><nav class="breadcrumbs"><a href="../../index.html">Home</a><span>Week 16 · Capstone</span></nav><section class="hero"><div class="eyebrow">Week 16 · Capstone</div><h1 class="page-title">Lesson 16.5: Final Project and Defence</h1><div class="toolbar"><button id="bookmarkBtn" class="btn">&#9734; Bookmark</button><button id="completeBtn" class="btn">Mark complete</button><button id="quizModeBtn" class="btn">&#127919; Start quiz mode</button><button class="print-page btn">&#128424; Print</button><button class="theme-toggle btn">&#127769; Dark mode</button></div></section><div class="layout-article"><article class="article" id="articleBody"><section>
+<h2>Final Project Requirements</h2>
+<p>The final project defence is a 20-minute presentation of your capstone work followed by 10 minutes of questions. It should tell a coherent story: why the problem matters, what you did, what you found, and what you would do next. The audience includes both technical peers and non-specialist evaluators — your presentation must work for both.</p>
+</section>
+<section>
+<h2>Presentation Structure</h2>
+<pre><code class="language-python">presentation_outline = {
+    "Slide 1 — Title (1 min)": [
+        "Project title",
+        "Your name",
+        "One sentence: what problem you solved and why"
+    ],
+    "Slides 2-3 — Motivation (3 min)": [
+        "Real-world problem with concrete stakes",
+        "Why existing solutions fall short",
+        "Your specific contribution"
+    ],
+    "Slides 4-5 — Data (3 min)": [
+        "Dataset description (source, size, features, labels)",
+        "Key EDA findings (1-2 figures)",
+        "Data challenges encountered and how addressed"
+    ],
+    "Slides 6-8 — Methods (5 min)": [
+        "Baseline and why you chose it",
+        "Your approach and the reasoning behind it",
+        "One key technical detail explained clearly"
+    ],
+    "Slides 9-10 — Results (4 min)": [
+        "Main results table with baselines",
+        "Error analysis: what the model gets wrong",
+        "Ablation: which component matters most?"
+    ],
+    "Slide 11 — Limitations and Future Work (2 min)": [
+        "What the model cannot do",
+        "What you would try next with more time"
+    ],
+    "Slide 12 — Conclusion (1 min)": [
+        "3 key takeaways only",
+        "Link to code/demo"
+    ]
+}
+</code></pre>
+</section>
+<section>
+<h2>Common Questions and How to Answer Them</h2>
+<pre><code class="language-python">questions_and_answers = {
+    "Why did you choose this baseline?": 
+        "Explain: it's the simplest sensible approach, establishes the floor, and is what a non-ML practitioner would do first. Good baselines are not weak — they are honest.",
+    
+    "Why not use model X instead?": 
+        "Acknowledge X. Explain: given your data size/compute/interpretability requirements, your choice was appropriate. Offer to compare in future work.",
+    
+    "Is the improvement statistically significant?": 
+        "Show confidence intervals. If you have them, explain the test. If you don't, acknowledge the limitation honestly.",
+    
+    "What would you do with 10x the compute?": 
+        "Larger model, more hyperparameter search, additional data augmentation, self-supervised pretraining — show you understand the scaling dimension.",
+    
+    "How would you deploy this?": 
+        "Describe: serving architecture, latency budget, monitoring plan, retraining schedule, A/B testing. This signals production awareness.",
+    
+    "What's the biggest limitation?": 
+        "Answer honestly — evaluators respect self-awareness far more than defensiveness. Then explain how you'd address it."
+}
+</code></pre>
+</section>
+<section>
+<h2>Portfolio Publication Checklist</h2>
+<pre><code class="language-python">publication_checklist = {
+    "Code": [
+        "All notebooks run top-to-bottom without errors",
+        "requirements.txt with pinned versions",
+        "README with clear setup instructions (test on a clean env)",
+        "No hardcoded paths or private credentials",
+        ".gitignore: exclude data/, __pycache__, .env",
+        "LICENSE file (MIT for open source)"
+    ],
+    "Documentation": [
+        "README: problem, results table, how to run",
+        "Model card: intended use, evaluation, limitations",
+        "Inline docstrings on all functions",
+        "Comments explaining non-obvious decisions"
+    ],
+    "Results": [
+        "Results are on held-out test data only",
+        "Confidence intervals or standard deviations reported",
+        "Comparison to at least one reasonable baseline",
+        "Honest discussion of failure cases"
+    ],
+    "Presentation": [
+        "Demo or interactive notebook if possible",
+        "Summary blog post (Medium, personal site, or LinkedIn)",
+        "Link in GitHub profile README"
+    ]
+}
+
+for section, items in publication_checklist.items():
+    print(f"\n{section}:")
+    for item in items: print(f"  [ ] {item}")
+</code></pre>
+</section>
+<section>
+<h2>Review Questions</h2>
+<div class="quiz-card" data-answer="C">
+<p><strong>Q1.</strong> When asked about your model's biggest limitation in a defence, you should:</p>
+<label class="quiz-option"><input type="radio" name="q1" value="A"> Deflect by emphasising the model's strengths</label>
+<label class="quiz-option"><input type="radio" name="q1" value="B"> Claim there are no significant limitations</label>
+<label class="quiz-option"><input type="radio" name="q1" value="C"> Answer honestly, explain the root cause, and describe how you would address it — self-awareness signals research maturity</label>
+<label class="quiz-option"><input type="radio" name="q1" value="D"> Blame the dataset quality</label>
+<button class="btn check-quiz" style="margin-top:.5rem">Check answer</button>
+</div>
+</section>
+</article><aside><nav class="toc"><h2>Contents</h2><ol id="tocList"></ol></nav></aside></div><footer class="footer"><p>&copy; <span id="year"></span> MS Machine Learning Interactive Learning Platform.</p></footer></div></main></div><script src="../../assets/js/nav-data.js"></script><script src="../../assets/js/search-index.js"></script><script src="../../assets/js/glossary-data.js"></script><script src="../../assets/js/site.js"></script><script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script><script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script></body></html>

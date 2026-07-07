@@ -1,0 +1,106 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Lesson 11.4: Sequence-to-Sequence Models | MS Machine Learning</title><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link rel="stylesheet" href="../../assets/css/styles.css"><link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css"></head><body data-root="../../" data-page-id="week-11/lesson-11-4" data-title="Lesson 11.4: Sequence-to-Sequence Models"><a class="skip-link" href="#main">Skip to main content</a><div class="progress" id="readingProgress"></div><div class="mobile-topbar"><button id="openSidebar">&#9776; Navigation</button><span style="font-family:var(--serif);font-weight:700;font-size:.95rem">MS Machine Learning</span><button class="theme-toggle">&#127769; Dark mode</button></div><div class="site-shell"><aside class="sidebar" id="sidebar"><div class="brand"><span class="brand-mark">ML</span><div><h1>Machine Learning</h1><small>Interactive Learning Platform</small></div></div><button id="closeSidebar" class="btn" style="margin:.25rem 0">&#10005; Close</button><div class="nav-search"><label for="navSearch">Search lessons</label><input id="navSearch" class="site-search-input" type="search" placeholder="Type to search&#8230;" autocomplete="off"><div class="mini-results search-results"></div></div><nav id="courseNav"></nav><section class="nav-group"><div class="nav-group-title">Your Progress</div><div id="progressList" class="progress-list small"></div></section></aside><main class="main" id="main"><div class="page-wrap"><nav class="breadcrumbs"><a href="../../index.html">Home</a><span>Week 11 · Sequence Models</span></nav><section class="hero"><div class="eyebrow">Week 11 · Sequence Models</div><h1 class="page-title">Lesson 11.4: Sequence-to-Sequence Models</h1><div class="toolbar"><button id="bookmarkBtn" class="btn">&#9734; Bookmark</button><button id="completeBtn" class="btn">Mark complete</button><button id="quizModeBtn" class="btn">&#127919; Start quiz mode</button><button class="print-page btn">&#128424; Print</button><button class="theme-toggle btn">&#127769; Dark mode</button></div></section><div class="layout-article"><article class="article" id="articleBody"><section>
+<h2>Sequence-to-Sequence Architecture</h2>
+<p>Many tasks require mapping a variable-length input sequence to a variable-length output sequence — machine translation, summarisation, question answering, code generation. The seq2seq framework (Sutskever et al., 2014) uses an encoder-decoder architecture: the encoder compresses the source into a context vector, and the decoder generates the target one token at a time conditioned on that context.</p>
+</section>
+<section>
+<h2>Encoder-Decoder with PyTorch</h2>
+<pre><code class="language-python">import torch, torch.nn as nn, torch.nn.functional as F
+
+class Encoder(nn.Module):
+    def __init__(self, vocab_size, embed_dim, hidden_dim, n_layers, dropout):
+        super().__init__()
+        self.embedding = nn.Embedding(vocab_size, embed_dim, padding_idx=0)
+        self.lstm = nn.LSTM(embed_dim, hidden_dim, n_layers,
+                            batch_first=True, dropout=dropout)
+        self.dropout = nn.Dropout(dropout)
+
+    def forward(self, src):
+        embedded = self.dropout(self.embedding(src))
+        outputs, (h, c) = self.lstm(embedded)
+        return outputs, h, c   # outputs for attention; h,c as decoder init
+
+class Decoder(nn.Module):
+    def __init__(self, vocab_size, embed_dim, hidden_dim, n_layers, dropout):
+        super().__init__()
+        self.embedding = nn.Embedding(vocab_size, embed_dim, padding_idx=0)
+        self.lstm = nn.LSTM(embed_dim, hidden_dim, n_layers,
+                            batch_first=True, dropout=dropout)
+        self.fc = nn.Linear(hidden_dim, vocab_size)
+        self.dropout = nn.Dropout(dropout)
+
+    def forward(self, tgt_token, h, c):
+        """Decode one token at a time."""
+        embedded = self.dropout(self.embedding(tgt_token.unsqueeze(1)))  # (B,1,E)
+        out, (h, c) = self.lstm(embedded, (h, c))
+        pred = self.fc(out.squeeze(1))   # (B, vocab_size)
+        return pred, h, c
+
+class Seq2Seq(nn.Module):
+    def __init__(self, encoder, decoder, device):
+        super().__init__()
+        self.encoder = encoder; self.decoder = decoder; self.device = device
+
+    def forward(self, src, tgt, teacher_forcing_ratio=0.5):
+        B, T = tgt.shape
+        vocab_size = self.decoder.fc.out_features
+        outputs = torch.zeros(B, T, vocab_size).to(self.device)
+
+        _, h, c = self.encoder(src)
+        token = tgt[:, 0]   # start with <SOS>
+        for t in range(1, T):
+            pred, h, c = self.decoder(token, h, c)
+            outputs[:, t] = pred
+            # Teacher forcing: use ground truth or model prediction
+            use_teacher = torch.rand(1).item() < teacher_forcing_ratio
+            token = tgt[:, t] if use_teacher else pred.argmax(1)
+        return outputs
+</code></pre>
+</section>
+<section>
+<h2>Beam Search Decoding</h2>
+<pre><code class="language-python">import torch, heapq
+
+def beam_search(decoder, h, c, sos_id, eos_id, max_len=50, beam_width=5):
+    """
+    Greedy search picks the best token at each step.
+    Beam search maintains `beam_width` candidate sequences simultaneously.
+    """
+    # (score, token_sequence, h, c)
+    beams = [(0.0, [sos_id], h, c)]
+    completed = []
+
+    for _ in range(max_len):
+        new_beams = []
+        for score, tokens, h, c in beams:
+            if tokens[-1] == eos_id:
+                completed.append((score, tokens)); continue
+
+            token = torch.tensor([tokens[-1]])
+            pred, h_new, c_new = decoder(token, h, c)
+            log_probs = torch.log_softmax(pred.squeeze(), dim=-1)
+            top_k = log_probs.topk(beam_width)
+
+            for log_p, tok in zip(top_k.values, top_k.indices):
+                new_score = score - log_p.item()   # min-heap: negate log prob
+                new_beams.append((new_score, tokens + [tok.item()], h_new, c_new))
+
+        beams = sorted(new_beams, key=lambda x: x[0])[:beam_width]
+        if not beams: break
+
+    all_candidates = completed + [(s, t, None, None) for s, t, _, _ in beams]
+    best = min(all_candidates, key=lambda x: x[0] / len(x[1]))
+    return best[1]
+</code></pre>
+</section>
+<section>
+<h2>Review Questions</h2>
+<div class="quiz-card" data-answer="C">
+<p><strong>Q1.</strong> What is teacher forcing in seq2seq training?</p>
+<label class="quiz-option"><input type="radio" name="q1" value="A"> Freezing the encoder weights during decoder training</label>
+<label class="quiz-option"><input type="radio" name="q1" value="B"> Using a pre-trained teacher model to supervise the student</label>
+<label class="quiz-option"><input type="radio" name="q1" value="C"> Feeding ground-truth tokens as decoder input instead of the model's own predictions, stabilising training</label>
+<label class="quiz-option"><input type="radio" name="q1" value="D"> Increasing the learning rate when the model makes errors</label>
+<button class="btn check-quiz" style="margin-top:.5rem">Check answer</button>
+</div>
+</section>
+</article><aside><nav class="toc"><h2>Contents</h2><ol id="tocList"></ol></nav></aside></div><footer class="footer"><p>&copy; <span id="year"></span> MS Machine Learning Interactive Learning Platform.</p></footer></div></main></div><script src="../../assets/js/nav-data.js"></script><script src="../../assets/js/search-index.js"></script><script src="../../assets/js/glossary-data.js"></script><script src="../../assets/js/site.js"></script><script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script><script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script></body></html>

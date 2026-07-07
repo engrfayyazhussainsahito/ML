@@ -1,0 +1,107 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Lesson 6.3: PCA and Dimensionality Reduction | MS Machine Learning</title><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link rel="stylesheet" href="../../assets/css/styles.css"><link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css"></head><body data-root="../../" data-page-id="week-06/lesson-6-3" data-title="Lesson 6.3: PCA and Dimensionality Reduction"><a class="skip-link" href="#main">Skip to main content</a><div class="progress" id="readingProgress"></div><div class="mobile-topbar"><button id="openSidebar">&#9776; Navigation</button><span style="font-family:var(--serif);font-weight:700;font-size:.95rem">MS Machine Learning</span><button class="theme-toggle">&#127769; Dark mode</button></div><div class="site-shell"><aside class="sidebar" id="sidebar"><div class="brand"><span class="brand-mark">ML</span><div><h1>Machine Learning</h1><small>Interactive Learning Platform</small></div></div><button id="closeSidebar" class="btn" style="margin:.25rem 0">&#10005; Close</button><div class="nav-search"><label for="navSearch">Search lessons</label><input id="navSearch" class="site-search-input" type="search" placeholder="Type to search&#8230;" autocomplete="off"><div class="mini-results search-results"></div></div><nav id="courseNav"></nav><section class="nav-group"><div class="nav-group-title">Your Progress</div><div id="progressList" class="progress-list small"></div></section></aside><main class="main" id="main"><div class="page-wrap"><nav class="breadcrumbs"><a href="../../index.html">Home</a><span>Week 6 · Unsupervised Learning</span></nav><section class="hero"><div class="eyebrow">Week 6 · Unsupervised Learning</div><h1 class="page-title">Lesson 6.3: PCA and Dimensionality Reduction</h1><div class="toolbar"><button id="bookmarkBtn" class="btn">&#9734; Bookmark</button><button id="completeBtn" class="btn">Mark complete</button><button id="quizModeBtn" class="btn">&#127919; Start quiz mode</button><button class="print-page btn">&#128424; Print</button><button class="theme-toggle btn">&#127769; Dark mode</button></div></section><div class="layout-article"><article class="article" id="articleBody"><section>
+<h2>The Dimensionality Problem</h2>
+<p>High-dimensional data is difficult to visualise, computationally expensive to model, and suffers from the curse of dimensionality. PCA finds a lower-dimensional representation that preserves as much variance as possible by projecting data onto the directions of maximum spread — the principal components.</p>
+</section>
+<section>
+<h2>PCA from First Principles</h2>
+<pre><code class="language-python">import numpy as np
+from sklearn.preprocessing import StandardScaler
+
+def pca_from_scratch(X, n_components):
+    """PCA via eigendecomposition of the covariance matrix."""
+    # Step 1: centre (and optionally scale) the data
+    X_c = X - X.mean(axis=0)
+
+    # Step 2: compute the covariance matrix
+    Cov = (X_c.T @ X_c) / (len(X) - 1)   # (p, p)
+
+    # Step 3: eigendecomposition
+    eigenvalues, eigenvectors = np.linalg.eigh(Cov)
+
+    # Step 4: sort by descending eigenvalue
+    idx = np.argsort(eigenvalues)[::-1]
+    eigenvalues  = eigenvalues[idx]
+    eigenvectors = eigenvectors[:, idx]
+
+    # Step 5: project onto top-k components
+    W = eigenvectors[:, :n_components]   # (p, k)
+    X_pca = X_c @ W                     # (n, k)
+
+    explained = eigenvalues[:n_components] / eigenvalues.sum()
+    return X_pca, W, explained
+
+X = np.random.randn(200, 10)
+X_2d, components, explained_var = pca_from_scratch(X, n_components=2)
+print(f"Explained variance: {explained_var}")
+print(f"Total explained: {explained_var.sum():.1%}")
+</code></pre>
+</section>
+<section>
+<h2>scikit-learn PCA</h2>
+<pre><code class="language-python">from sklearn.decomposition import PCA
+from sklearn.preprocessing import StandardScaler
+from sklearn.datasets import load_breast_cancer
+import numpy as np
+
+data = load_breast_cancer()
+X, y = data.data, data.target
+
+# Always scale before PCA — features on different scales distort variance
+scaler = StandardScaler()
+X_scaled = scaler.fit_transform(X)
+
+# Choose n_components
+pca_full = PCA().fit(X_scaled)
+cumvar = np.cumsum(pca_full.explained_variance_ratio_)
+n_95 = np.argmax(cumvar >= 0.95) + 1
+print(f"Components for 95% variance: {n_95}")
+
+# Fit with chosen n_components
+pca = PCA(n_components=n_95)
+X_reduced = pca.fit_transform(X_scaled)
+print(f"Original shape: {X_scaled.shape}")
+print(f"Reduced shape:  {X_reduced.shape}")
+print(f"Explained variance: {pca.explained_variance_ratio_.sum():.1%}")
+
+# Scree plot values
+print("\nPer-component explained variance:")
+for i, var in enumerate(pca.explained_variance_ratio_):
+    print(f"  PC{i+1}: {var:.3f} ({var*100:.1f}%)")
+</code></pre>
+</section>
+<section>
+<h2>PCA for Visualisation and Preprocessing</h2>
+<pre><code class="language-python">from sklearn.decomposition import PCA
+from sklearn.pipeline import Pipeline
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.model_selection import cross_val_score
+
+# PCA as a preprocessing step to speed up downstream models
+pipe = Pipeline([
+    ('scale', StandardScaler()),
+    ('pca',   PCA(n_components=0.95)),   # keep 95% variance
+    ('clf',   RandomForestClassifier(n_estimators=100, random_state=42))
+])
+
+scores = cross_val_score(pipe, X, y, cv=5, scoring='accuracy')
+print(f"PCA+RF accuracy: {scores.mean():.4f} +/- {scores.std():.4f}")
+
+# Reconstruction error: how much information is lost
+pca_fixed = PCA(n_components=5).fit(X_scaled)
+X_reconstructed = pca_fixed.inverse_transform(pca_fixed.transform(X_scaled))
+recon_error = np.mean((X_scaled - X_reconstructed)**2)
+print(f"Reconstruction MSE (5 components): {recon_error:.4f}")
+</code></pre>
+</section>
+<section>
+<h2>Review Questions</h2>
+<div class="quiz-card" data-answer="B">
+<p><strong>Q1.</strong> Why should features be standardised before applying PCA?</p>
+<label class="quiz-option"><input type="radio" name="q1" value="A"> PCA cannot process negative numbers</label>
+<label class="quiz-option"><input type="radio" name="q1" value="B"> Features with large variance dominate the principal components regardless of their actual importance</label>
+<label class="quiz-option"><input type="radio" name="q1" value="C"> PCA requires features in [0,1]</label>
+<label class="quiz-option"><input type="radio" name="q1" value="D"> Standardisation makes PCA faster</label>
+<button class="btn check-quiz" style="margin-top:.5rem">Check answer</button>
+</div>
+</section>
+</article><aside><nav class="toc"><h2>Contents</h2><ol id="tocList"></ol></nav></aside></div><footer class="footer"><p>&copy; <span id="year"></span> MS Machine Learning Interactive Learning Platform.</p></footer></div></main></div><script src="../../assets/js/nav-data.js"></script><script src="../../assets/js/search-index.js"></script><script src="../../assets/js/glossary-data.js"></script><script src="../../assets/js/site.js"></script><script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script><script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script></body></html>

@@ -1,0 +1,135 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Lesson 13.1: Autoencoders and VAEs | MS Machine Learning</title><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link rel="stylesheet" href="../../assets/css/styles.css"><link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css"></head><body data-root="../../" data-page-id="week-13/lesson-13-1" data-title="Lesson 13.1: Autoencoders and VAEs"><a class="skip-link" href="#main">Skip to main content</a><div class="progress" id="readingProgress"></div><div class="mobile-topbar"><button id="openSidebar">&#9776; Navigation</button><span style="font-family:var(--serif);font-weight:700;font-size:.95rem">MS Machine Learning</span><button class="theme-toggle">&#127769; Dark mode</button></div><div class="site-shell"><aside class="sidebar" id="sidebar"><div class="brand"><span class="brand-mark">ML</span><div><h1>Machine Learning</h1><small>Interactive Learning Platform</small></div></div><button id="closeSidebar" class="btn" style="margin:.25rem 0">&#10005; Close</button><div class="nav-search"><label for="navSearch">Search lessons</label><input id="navSearch" class="site-search-input" type="search" placeholder="Type to search&#8230;" autocomplete="off"><div class="mini-results search-results"></div></div><nav id="courseNav"></nav><section class="nav-group"><div class="nav-group-title">Your Progress</div><div id="progressList" class="progress-list small"></div></section></aside><main class="main" id="main"><div class="page-wrap"><nav class="breadcrumbs"><a href="../../index.html">Home</a><span>Week 13 · Generative Models</span></nav><section class="hero"><div class="eyebrow">Week 13 · Generative Models</div><h1 class="page-title">Lesson 13.1: Autoencoders and VAEs</h1><div class="toolbar"><button id="bookmarkBtn" class="btn">&#9734; Bookmark</button><button id="completeBtn" class="btn">Mark complete</button><button id="quizModeBtn" class="btn">&#127919; Start quiz mode</button><button class="print-page btn">&#128424; Print</button><button class="theme-toggle btn">&#127769; Dark mode</button></div></section><div class="layout-article"><article class="article" id="articleBody"><section>
+<h2>Autoencoders</h2>
+<p>An autoencoder learns to compress data into a low-dimensional latent representation and reconstruct the original from it. The encoder E maps input x to latent code z; the decoder D maps z back to x̂. Training minimises reconstruction error: L = ||x − D(E(x))||². The bottleneck forces the network to learn a compact, informative representation.</p>
+<pre><code class="language-python">import torch, torch.nn as nn
+
+class Autoencoder(nn.Module):
+    def __init__(self, input_dim=784, latent_dim=32):
+        super().__init__()
+        self.encoder = nn.Sequential(
+            nn.Linear(input_dim, 512), nn.ReLU(),
+            nn.Linear(512, 128),       nn.ReLU(),
+            nn.Linear(128, latent_dim)
+        )
+        self.decoder = nn.Sequential(
+            nn.Linear(latent_dim, 128), nn.ReLU(),
+            nn.Linear(128, 512),        nn.ReLU(),
+            nn.Linear(512, input_dim),  nn.Sigmoid()
+        )
+
+    def forward(self, x):
+        z    = self.encoder(x)
+        x_hat = self.decoder(z)
+        return x_hat, z
+
+ae = Autoencoder(784, 32)
+x = torch.randn(64, 784)
+x_hat, z = ae(x)
+print(f"Input:   {x.shape}")      # (64, 784)
+print(f"Latent:  {z.shape}")      # (64, 32)
+print(f"Output:  {x_hat.shape}")  # (64, 784)
+
+criterion = nn.MSELoss()
+loss = criterion(x_hat, x)
+print(f"MSE: {loss.item():.4f}")
+</code></pre>
+</section>
+<section>
+<h2>The Problem with Standard Autoencoders</h2>
+<p>Standard autoencoders learn a discrete, irregular latent space. If you sample a random point z from the latent space and decode it, the output is typically meaningless — the encoder only populates isolated regions for each training example. We cannot use the latent space for generation.</p>
+</section>
+<section>
+<h2>Variational Autoencoders (VAE)</h2>
+<p>VAEs (Kingma and Welling, 2013) solve this by making the encoder output a probability distribution q(z|x) = N(μ, σ²) instead of a single point. The decoder must reconstruct from samples drawn from this distribution, forcing the latent space to be smooth and continuous. Crucially, sampling is made differentiable via the <strong>reparameterisation trick</strong>: z = μ + σ·ε, where ε ~ N(0,1).</p>
+<pre><code class="language-python">import torch, torch.nn as nn, torch.nn.functional as F
+
+class VAE(nn.Module):
+    def __init__(self, input_dim=784, latent_dim=20):
+        super().__init__()
+        # Encoder outputs mean and log-variance
+        self.fc_enc   = nn.Sequential(nn.Linear(input_dim, 512), nn.ReLU())
+        self.fc_mu    = nn.Linear(512, latent_dim)
+        self.fc_logvar = nn.Linear(512, latent_dim)
+
+        # Decoder
+        self.decoder = nn.Sequential(
+            nn.Linear(latent_dim, 512), nn.ReLU(),
+            nn.Linear(512, input_dim),  nn.Sigmoid()
+        )
+
+    def encode(self, x):
+        h  = self.fc_enc(x)
+        mu = self.fc_mu(h)
+        logvar = self.fc_logvar(h)
+        return mu, logvar
+
+    def reparameterise(self, mu, logvar):
+        """z = mu + sigma * epsilon   (differentiable sampling)"""
+        if self.training:
+            std = torch.exp(0.5 * logvar)
+            eps = torch.randn_like(std)
+            return mu + eps * std
+        return mu   # deterministic at inference
+
+    def decode(self, z):
+        return self.decoder(z)
+
+    def forward(self, x):
+        mu, logvar = self.encode(x)
+        z = self.reparameterise(mu, logvar)
+        return self.decode(z), mu, logvar
+
+def vae_loss(x_hat, x, mu, logvar, beta=1.0):
+    """
+    ELBO = Reconstruction loss + beta * KL divergence
+    KL( q(z|x) || N(0,I) ) = -0.5 * sum(1 + logvar - mu^2 - e^logvar)
+    """
+    recon = F.binary_cross_entropy(x_hat, x, reduction='sum')
+    kld   = -0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp())
+    return (recon + beta * kld) / x.size(0)
+
+vae = VAE(784, 20)
+x   = torch.rand(64, 784)
+x_hat, mu, logvar = vae(x)
+loss = vae_loss(x_hat, x, mu, logvar, beta=1.0)
+print(f"VAE ELBO loss: {loss.item():.2f}")
+
+# Generation: sample z ~ N(0,I), decode
+z_sample = torch.randn(16, 20)
+generated = vae.decode(z_sample)
+print(f"Generated: {generated.shape}")   # (16, 784)
+</code></pre>
+</section>
+<section>
+<h2>Beta-VAE and Disentanglement</h2>
+<pre><code class="language-python"># beta > 1 encourages disentangled latent factors
+# Each dimension of z should correspond to one interpretable factor
+# e.g. for face images: z[0]=pose, z[1]=lighting, z[2]=expression
+
+# beta=4 works well for many datasets
+loss = vae_loss(x_hat, x, mu, logvar, beta=4.0)
+
+# Interpolation in latent space
+z1 = vae.encode(x[:1])[0]    # latent of image 1
+z2 = vae.encode(x[1:2])[0]   # latent of image 2
+
+interpolations = []
+for alpha in torch.linspace(0, 1, 8):
+    z_interp = (1 - alpha) * z1 + alpha * z2
+    interpolations.append(vae.decode(z_interp))
+
+# Smooth interpolation only possible in a well-structured latent space
+</code></pre>
+</section>
+<section>
+<h2>Review Questions</h2>
+<div class="quiz-card" data-answer="C">
+<p><strong>Q1.</strong> What does the reparameterisation trick achieve in VAE training?</p>
+<label class="quiz-option"><input type="radio" name="q1" value="A"> It removes the need for a decoder</label>
+<label class="quiz-option"><input type="radio" name="q1" value="B"> It sets the KL divergence to zero</label>
+<label class="quiz-option"><input type="radio" name="q1" value="C"> It makes the sampling operation differentiable by expressing z = mu + sigma*epsilon, allowing gradients to flow through the encoder</label>
+<label class="quiz-option"><input type="radio" name="q1" value="D"> It encodes images in fewer bits</label>
+<button class="btn check-quiz" style="margin-top:.5rem">Check answer</button>
+</div>
+</section>
+</article><aside><nav class="toc"><h2>Contents</h2><ol id="tocList"></ol></nav></aside></div><footer class="footer"><p>&copy; <span id="year"></span> MS Machine Learning Interactive Learning Platform.</p></footer></div></main></div><script src="../../assets/js/nav-data.js"></script><script src="../../assets/js/search-index.js"></script><script src="../../assets/js/glossary-data.js"></script><script src="../../assets/js/site.js"></script><script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script><script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script></body></html>

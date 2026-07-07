@@ -1,0 +1,108 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Lesson 5.2: Boosting and XGBoost | MS Machine Learning</title><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link rel="stylesheet" href="../../assets/css/styles.css"><link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css"></head><body data-root="../../" data-page-id="week-05/lesson-5-2" data-title="Lesson 5.2: Boosting and XGBoost"><a class="skip-link" href="#main">Skip to main content</a><div class="progress" id="readingProgress"></div><div class="mobile-topbar"><button id="openSidebar">&#9776; Navigation</button><span style="font-family:var(--serif);font-weight:700;font-size:.95rem">MS Machine Learning</span><button class="theme-toggle">&#127769; Dark mode</button></div><div class="site-shell"><aside class="sidebar" id="sidebar"><div class="brand"><span class="brand-mark">ML</span><div><h1>Machine Learning</h1><small>Interactive Learning Platform</small></div></div><button id="closeSidebar" class="btn" style="margin:.25rem 0">&#10005; Close</button><div class="nav-search"><label for="navSearch">Search lessons</label><input id="navSearch" class="site-search-input" type="search" placeholder="Type to search&#8230;" autocomplete="off"><div class="mini-results search-results"></div></div><nav id="courseNav"></nav><section class="nav-group"><div class="nav-group-title">Your Progress</div><div id="progressList" class="progress-list small"></div></section></aside><main class="main" id="main"><div class="page-wrap"><nav class="breadcrumbs"><a href="../../index.html">Home</a><span>Week 5 · Ensemble Methods</span></nav><section class="hero"><div class="eyebrow">Week 5 · Ensemble Methods</div><h1 class="page-title">Lesson 5.2: Boosting and XGBoost</h1><div class="toolbar"><button id="bookmarkBtn" class="btn">&#9734; Bookmark</button><button id="completeBtn" class="btn">Mark complete</button><button id="quizModeBtn" class="btn">&#127919; Start quiz mode</button><button class="print-page btn">&#128424; Print</button><button class="theme-toggle btn">&#127769; Dark mode</button></div></section><div class="layout-article"><article class="article" id="articleBody"><section>
+<h2>Boosting: Sequential Correction</h2>
+<p>Where bagging trains trees independently and averages, boosting trains trees sequentially — each new tree corrects the errors of the previous ensemble. The result is a strong learner built from many weak ones. Boosting consistently dominates structured/tabular data competitions.</p>
+</section>
+<section>
+<h2>Gradient Boosting Machines</h2>
+<p>GBM frames boosting as gradient descent in function space. At each stage we fit a new tree to the <em>negative gradient</em> of the loss with respect to current predictions — for MSE regression this is the residual; for log-loss classification it is a different form. Each tree is a small gradient descent step.</p>
+<pre><code class="language-python">from sklearn.ensemble import GradientBoostingClassifier
+from sklearn.datasets import make_classification
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import roc_auc_score
+import numpy as np
+
+X, y = make_classification(n_samples=2000, n_features=20, random_state=42)
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2)
+
+gbm = GradientBoostingClassifier(
+    n_estimators=400,
+    learning_rate=0.05,   # shrinkage: each tree contributes less
+    max_depth=4,
+    subsample=0.8,        # stochastic gradient boosting
+    min_samples_leaf=5,
+    random_state=42
+)
+gbm.fit(X_train, y_train)
+print(f"AUC: {roc_auc_score(y_test, gbm.predict_proba(X_test)[:,1]):.4f}")
+
+# Staged prediction: AUC as a function of number of trees
+aucs = [roc_auc_score(y_test, proba[:,1])
+        for proba in gbm.staged_predict_proba(X_test)]
+best_n = np.argmax(aucs) + 1
+print(f"Best n_estimators: {best_n}, AUC={aucs[best_n-1]:.4f}")
+</code></pre>
+</section>
+<section>
+<h2>XGBoost</h2>
+<p>XGBoost (Chen & Guestrin, 2016) extends GBM with a second-order Taylor expansion of the loss, explicit regularisation on tree complexity (L1/L2 on leaf weights), and column/row subsampling. It is typically 10–100× faster than sklearn GBM and usually more accurate.</p>
+<pre><code class="language-python">import xgboost as xgb
+from sklearn.model_selection import cross_val_score
+
+xgb_clf = xgb.XGBClassifier(
+    n_estimators=500,
+    learning_rate=0.05,
+    max_depth=6,
+    subsample=0.8,
+    colsample_bytree=0.8,   # fraction of features per tree
+    reg_alpha=0.1,          # L1 regularisation on leaf weights
+    reg_lambda=1.0,         # L2 regularisation on leaf weights
+    use_label_encoder=False,
+    eval_metric='logloss',
+    random_state=42,
+    n_jobs=-1
+)
+
+scores = cross_val_score(xgb_clf, X, y, cv=5, scoring='roc_auc', n_jobs=-1)
+print(f"XGBoost AUC: {scores.mean():.4f} +/- {scores.std():.4f}")
+
+# Early stopping (use a validation set, not test!)
+xgb_clf.fit(X_train, y_train,
+            eval_set=[(X_test, y_test)],
+            early_stopping_rounds=30,
+            verbose=False)
+print(f"Best iteration: {xgb_clf.best_iteration}")
+</code></pre>
+</section>
+<section>
+<h2>LightGBM: Leaf-Wise Growth</h2>
+<pre><code class="language-python">import lightgbm as lgb
+from sklearn.model_selection import cross_val_score
+
+lgb_clf = lgb.LGBMClassifier(
+    n_estimators=1000,
+    learning_rate=0.03,
+    num_leaves=63,          # controls model complexity (not max_depth)
+    min_child_samples=20,
+    subsample=0.8,
+    colsample_bytree=0.8,
+    reg_alpha=0.1,
+    reg_lambda=0.1,
+    random_state=42,
+    n_jobs=-1,
+    verbosity=-1
+)
+scores = cross_val_score(lgb_clf, X, y, cv=5, scoring='roc_auc', n_jobs=-1)
+print(f"LightGBM AUC: {scores.mean():.4f} +/- {scores.std():.4f}")
+</code></pre>
+<table>
+<thead><tr><th></th><th>sklearn GBM</th><th>XGBoost</th><th>LightGBM</th></tr></thead>
+<tbody>
+<tr><td>Speed</td><td>Slow</td><td>Fast</td><td>Fastest</td></tr>
+<tr><td>Memory</td><td>High</td><td>Medium</td><td>Low</td></tr>
+<tr><td>Categorical support</td><td>No</td><td>No</td><td>Native</td></tr>
+<tr><td>Tree growth</td><td>Level-wise</td><td>Level-wise</td><td>Leaf-wise</td></tr>
+</tbody>
+</table>
+</section>
+<section>
+<h2>Review Questions</h2>
+<div class="quiz-card" data-answer="B">
+<p><strong>Q1.</strong> In gradient boosting, what does each new tree fit to?</p>
+<label class="quiz-option"><input type="radio" name="q1" value="A"> The original labels y</label>
+<label class="quiz-option"><input type="radio" name="q1" value="B"> The negative gradient of the loss with respect to current predictions</label>
+<label class="quiz-option"><input type="radio" name="q1" value="C"> A random subsample of features</label>
+<label class="quiz-option"><input type="radio" name="q1" value="D"> The average of all previous tree predictions</label>
+<button class="btn check-quiz" style="margin-top:.5rem">Check answer</button>
+</div>
+</section>
+</article><aside><nav class="toc"><h2>Contents</h2><ol id="tocList"></ol></nav></aside></div><footer class="footer"><p>&copy; <span id="year"></span> MS Machine Learning Interactive Learning Platform.</p></footer></div></main></div><script src="../../assets/js/nav-data.js"></script><script src="../../assets/js/search-index.js"></script><script src="../../assets/js/glossary-data.js"></script><script src="../../assets/js/site.js"></script><script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script><script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script></body></html>

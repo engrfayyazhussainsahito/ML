@@ -1,0 +1,123 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Lesson 10.4: Image Classification Lab | MS Machine Learning</title><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link rel="stylesheet" href="../../assets/css/styles.css"><link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css"></head><body data-root="../../" data-page-id="week-10/lesson-10-4" data-title="Lesson 10.4: Image Classification Lab"><a class="skip-link" href="#main">Skip to main content</a><div class="progress" id="readingProgress"></div><div class="mobile-topbar"><button id="openSidebar">&#9776; Navigation</button><span style="font-family:var(--serif);font-weight:700;font-size:.95rem">MS Machine Learning</span><button class="theme-toggle">&#127769; Dark mode</button></div><div class="site-shell"><aside class="sidebar" id="sidebar"><div class="brand"><span class="brand-mark">ML</span><div><h1>Machine Learning</h1><small>Interactive Learning Platform</small></div></div><button id="closeSidebar" class="btn" style="margin:.25rem 0">&#10005; Close</button><div class="nav-search"><label for="navSearch">Search lessons</label><input id="navSearch" class="site-search-input" type="search" placeholder="Type to search&#8230;" autocomplete="off"><div class="mini-results search-results"></div></div><nav id="courseNav"></nav><section class="nav-group"><div class="nav-group-title">Your Progress</div><div id="progressList" class="progress-list small"></div></section></aside><main class="main" id="main"><div class="page-wrap"><nav class="breadcrumbs"><a href="../../index.html">Home</a><span>Week 10 · CNNs</span></nav><section class="hero"><div class="eyebrow">Week 10 · CNNs</div><h1 class="page-title">Lesson 10.4: Image Classification Lab</h1><div class="toolbar"><button id="bookmarkBtn" class="btn">&#9734; Bookmark</button><button id="completeBtn" class="btn">Mark complete</button><button id="quizModeBtn" class="btn">&#127919; Start quiz mode</button><button class="print-page btn">&#128424; Print</button><button class="theme-toggle btn">&#127769; Dark mode</button></div></section><div class="layout-article"><article class="article" id="articleBody"><section>
+<h2>Complete Image Classification Pipeline</h2>
+<p>This lesson consolidates weeks 9–10 into a production-quality image classification pipeline on CIFAR-10, covering data loading, augmentation, model training, evaluation, and error analysis.</p>
+</section>
+<section>
+<h2>Dataset and DataLoader</h2>
+<pre><code class="language-python">import torch, torchvision, torchvision.transforms as T
+from torch.utils.data import DataLoader
+
+CIFAR10_MEAN = (0.4914, 0.4822, 0.4465)
+CIFAR10_STD  = (0.2023, 0.1994, 0.2010)
+CLASSES = ['airplane','automobile','bird','cat','deer',
+           'dog','frog','horse','ship','truck']
+
+train_transform = T.Compose([
+    T.RandomCrop(32, padding=4),
+    T.RandomHorizontalFlip(),
+    T.AutoAugment(T.AutoAugmentPolicy.CIFAR10),
+    T.ToTensor(),
+    T.Normalize(CIFAR10_MEAN, CIFAR10_STD)
+])
+val_transform = T.Compose([
+    T.ToTensor(), T.Normalize(CIFAR10_MEAN, CIFAR10_STD)])
+
+train_ds = torchvision.datasets.CIFAR10('./data', train=True,  transform=train_transform, download=True)
+val_ds   = torchvision.datasets.CIFAR10('./data', train=False, transform=val_transform, download=True)
+
+train_loader = DataLoader(train_ds, batch_size=128, shuffle=True, num_workers=4, pin_memory=True)
+val_loader   = DataLoader(val_ds,   batch_size=256, shuffle=False, num_workers=4, pin_memory=True)
+
+print(f"Train: {len(train_ds):,}, Val: {len(val_ds):,}")
+</code></pre>
+</section>
+<section>
+<h2>Training with Mixed Precision</h2>
+<pre><code class="language-python">import torch, torch.nn as nn
+from torch.cuda.amp import GradScaler, autocast
+import torchvision.models as models
+
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
+model = models.resnet18(weights=None)  # train from scratch on CIFAR-10
+model.fc = nn.Linear(512, 10)
+model = model.to(device)
+
+criterion = nn.CrossEntropyLoss(label_smoothing=0.1)
+optimiser = torch.optim.SGD(model.parameters(), lr=0.1,
+                            momentum=0.9, weight_decay=5e-4)
+scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimiser, T_max=200)
+scaler = GradScaler()   # for mixed precision (FP16)
+
+def train_epoch(model, loader, opt, criterion, scaler):
+    model.train()
+    total_loss, correct, total = 0, 0, 0
+    for imgs, labels in loader:
+        imgs, labels = imgs.to(device), labels.to(device)
+        opt.zero_grad()
+        with autocast():   # compute in FP16
+            logits = model(imgs)
+            loss   = criterion(logits, labels)
+        scaler.scale(loss).backward()
+        scaler.unscale_(opt)
+        nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+        scaler.step(opt); scaler.update()
+        total_loss += loss.item()
+        correct    += (logits.argmax(1) == labels).sum().item()
+        total      += len(labels)
+    return total_loss / len(loader), correct / total
+
+def eval_epoch(model, loader, criterion):
+    model.eval(); total_loss, correct, total = 0, 0, 0
+    with torch.no_grad():
+        for imgs, labels in loader:
+            imgs, labels = imgs.to(device), labels.to(device)
+            logits = model(imgs)
+            total_loss += criterion(logits, labels).item()
+            correct    += (logits.argmax(1) == labels).sum().item()
+            total      += len(labels)
+    return total_loss / len(loader), correct / total
+</code></pre>
+</section>
+<section>
+<h2>Error Analysis</h2>
+<pre><code class="language-python">import torch, numpy as np
+from sklearn.metrics import confusion_matrix
+
+all_labels, all_preds = [], []
+model.eval()
+with torch.no_grad():
+    for imgs, labels in val_loader:
+        preds = model(imgs.to(device)).argmax(1).cpu()
+        all_labels.extend(labels.numpy())
+        all_preds.extend(preds.numpy())
+
+cm = confusion_matrix(all_labels, all_preds)
+print("Confusion matrix (rows=true, cols=pred):")
+print(cm)
+
+# Per-class accuracy
+per_class_acc = cm.diagonal() / cm.sum(axis=1)
+print("\nPer-class accuracy:")
+for cls, acc in zip(CLASSES, per_class_acc):
+    print(f"  {cls:12s}: {acc:.3f}")
+
+# Most confused pairs
+for i in range(10):
+    for j in range(10):
+        if i != j and cm[i,j] > 50:
+            print(f"  True {CLASSES[i]} predicted as {CLASSES[j]}: {cm[i,j]} times")
+</code></pre>
+</section>
+<section>
+<h2>Review Questions</h2>
+<div class="quiz-card" data-answer="C">
+<p><strong>Q1.</strong> Label smoothing (label_smoothing=0.1 in CrossEntropyLoss) helps by:</p>
+<label class="quiz-option"><input type="radio" name="q1" value="A"> Removing 10% of training labels</label>
+<label class="quiz-option"><input type="radio" name="q1" value="B"> Weighting minority classes more</label>
+<label class="quiz-option"><input type="radio" name="q1" value="C"> Preventing the model from becoming overconfident, improving calibration and generalisation</label>
+<label class="quiz-option"><input type="radio" name="q1" value="D"> Reducing the learning rate by 10%</label>
+<button class="btn check-quiz" style="margin-top:.5rem">Check answer</button>
+</div>
+</section>
+</article><aside><nav class="toc"><h2>Contents</h2><ol id="tocList"></ol></nav></aside></div><footer class="footer"><p>&copy; <span id="year"></span> MS Machine Learning Interactive Learning Platform.</p></footer></div></main></div><script src="../../assets/js/nav-data.js"></script><script src="../../assets/js/search-index.js"></script><script src="../../assets/js/glossary-data.js"></script><script src="../../assets/js/site.js"></script><script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script><script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script></body></html>

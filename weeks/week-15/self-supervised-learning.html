@@ -1,0 +1,103 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Lesson 15.3: Self-Supervised Learning | MS Machine Learning</title><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link rel="stylesheet" href="../../assets/css/styles.css"><link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css"></head><body data-root="../../" data-page-id="week-15/lesson-15-3" data-title="Lesson 15.3: Self-Supervised Learning"><a class="skip-link" href="#main">Skip to main content</a><div class="progress" id="readingProgress"></div><div class="mobile-topbar"><button id="openSidebar">&#9776; Navigation</button><span style="font-family:var(--serif);font-weight:700;font-size:.95rem">MS Machine Learning</span><button class="theme-toggle">&#127769; Dark mode</button></div><div class="site-shell"><aside class="sidebar" id="sidebar"><div class="brand"><span class="brand-mark">ML</span><div><h1>Machine Learning</h1><small>Interactive Learning Platform</small></div></div><button id="closeSidebar" class="btn" style="margin:.25rem 0">&#10005; Close</button><div class="nav-search"><label for="navSearch">Search lessons</label><input id="navSearch" class="site-search-input" type="search" placeholder="Type to search&#8230;" autocomplete="off"><div class="mini-results search-results"></div></div><nav id="courseNav"></nav><section class="nav-group"><div class="nav-group-title">Your Progress</div><div id="progressList" class="progress-list small"></div></section></aside><main class="main" id="main"><div class="page-wrap"><nav class="breadcrumbs"><a href="../../index.html">Home</a><span>Week 15 · Advanced Topics</span></nav><section class="hero"><div class="eyebrow">Week 15 · Advanced Topics</div><h1 class="page-title">Lesson 15.3: Self-Supervised Learning</h1><div class="toolbar"><button id="bookmarkBtn" class="btn">&#9734; Bookmark</button><button id="completeBtn" class="btn">Mark complete</button><button id="quizModeBtn" class="btn">&#127919; Start quiz mode</button><button class="print-page btn">&#128424; Print</button><button class="theme-toggle btn">&#127769; Dark mode</button></div></section><div class="layout-article"><article class="article" id="articleBody"><section>
+<h2>Learning Without Labels</h2>
+<p>Self-supervised learning (SSL) creates supervision signals from the structure of unlabelled data itself. A pretext task (e.g. predict a masked word, predict rotation angle, or maximise similarity of augmented views) forces the model to learn rich representations. These representations transfer remarkably well to downstream tasks — often matching or exceeding fully supervised baselines with far fewer labelled examples.</p>
+</section>
+<section>
+<h2>Contrastive Learning: SimCLR</h2>
+<pre><code class="language-python">import torch, torch.nn as nn, torch.nn.functional as F
+import torchvision.transforms as T
+
+# Two random augmentations of the same image = positive pair
+# Augmentations of different images = negative pairs
+# Learn: same image -> nearby in embedding space; different -> far apart
+
+class SimCLR(nn.Module):
+    def __init__(self, encoder, projection_dim=128):
+        super().__init__()
+        self.encoder = encoder   # e.g. ResNet-50 without final layer
+        self.projector = nn.Sequential(
+            nn.Linear(2048, 512), nn.ReLU(),
+            nn.Linear(512, projection_dim)
+        )
+
+    def forward(self, x):
+        h = self.encoder(x)    # representations
+        z = self.projector(h)  # projection for contrastive loss
+        return h, F.normalize(z, dim=1)   # L2-normalise projections
+
+def nt_xent_loss(z1, z2, temperature=0.5):
+    """
+    Normalised temperature-scaled cross entropy (NT-Xent).
+    For each sample i, z1[i] and z2[i] should be most similar (positive pair).
+    All other pairs are negatives.
+    """
+    N = z1.size(0)
+    z = torch.cat([z1, z2], dim=0)          # (2N, d)
+    sim = (z @ z.T) / temperature            # (2N, 2N) cosine similarity
+
+    # Mask out self-similarity
+    mask = torch.eye(2*N, dtype=bool)
+    sim.masked_fill_(mask, -1e9)
+
+    # Positive pairs: (i, i+N) and (i+N, i)
+    pos_sim = torch.cat([torch.diag(sim, N), torch.diag(sim, -N)])  # (2N,)
+    loss = -pos_sim + torch.logsumexp(sim, dim=1)
+    return loss.mean()
+
+# Data augmentation pipeline
+augment = T.Compose([
+    T.RandomResizedCrop(224, scale=(0.2, 1.0)),
+    T.RandomHorizontalFlip(),
+    T.RandomApply([T.ColorJitter(0.8,0.8,0.8,0.2)], p=0.8),
+    T.RandomGrayscale(p=0.2),
+    T.GaussianBlur(23, sigma=(0.1, 2.0)),
+    T.ToTensor(),
+    T.Normalize([0.485,0.456,0.406],[0.229,0.224,0.225])
+])
+</code></pre>
+</section>
+<section>
+<h2>Masked Autoencoders (MAE)</h2>
+<pre><code class="language-python">import torch, torch.nn as nn
+
+class MAE(nn.Module):
+    """
+    Masked Autoencoder (He et al., 2021).
+    Mask 75% of image patches, reconstruct from 25%.
+    Forces learning of rich visual representations.
+    """
+    def __init__(self, patch_size=16, mask_ratio=0.75, d_model=768):
+        super().__init__()
+        self.patch_size  = patch_size
+        self.mask_ratio  = mask_ratio
+        # Encoder: ViT backbone, processes only visible patches
+        # Decoder: lightweight Transformer, reconstructs all patches
+        self.mask_token  = nn.Parameter(torch.zeros(1, 1, d_model))
+
+    def random_masking(self, x):
+        """Randomly mask a fraction of patches."""
+        N, L, D = x.shape
+        n_keep  = int(L * (1 - self.mask_ratio))
+        noise   = torch.rand(N, L, device=x.device)
+        ids_sort = noise.argsort(dim=1)
+        ids_keep = ids_sort[:, :n_keep]
+        x_masked = torch.gather(x, 1, ids_keep.unsqueeze(-1).expand(-1,-1,D))
+        return x_masked, ids_sort, ids_keep
+
+# Self-supervised pretraining objective: reconstruct pixel values of masked patches
+# Loss: MSE on masked patches only
+# After pretraining: throw away decoder, fine-tune encoder on downstream task
+</code></pre>
+</section>
+<section>
+<h2>Review Questions</h2>
+<div class="quiz-card" data-answer="A">
+<p><strong>Q1.</strong> What makes self-supervised learning powerful compared to fully supervised learning?</p>
+<label class="quiz-option"><input type="radio" name="q1" value="A"> It can leverage vast amounts of unlabelled data — the labels are derived from the data structure itself — enabling training at a scale that supervised learning cannot match</label>
+<label class="quiz-option"><input type="radio" name="q1" value="B"> It always achieves higher accuracy</label>
+<label class="quiz-option"><input type="radio" name="q1" value="C"> It requires no augmentation</label>
+<label class="quiz-option"><input type="radio" name="q1" value="D"> It is faster to train than supervised methods</label>
+<button class="btn check-quiz" style="margin-top:.5rem">Check answer</button>
+</div>
+</section>
+</article><aside><nav class="toc"><h2>Contents</h2><ol id="tocList"></ol></nav></aside></div><footer class="footer"><p>&copy; <span id="year"></span> MS Machine Learning Interactive Learning Platform.</p></footer></div></main></div><script src="../../assets/js/nav-data.js"></script><script src="../../assets/js/search-index.js"></script><script src="../../assets/js/glossary-data.js"></script><script src="../../assets/js/site.js"></script><script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script><script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script></body></html>

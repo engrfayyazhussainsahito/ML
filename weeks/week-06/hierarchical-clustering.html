@@ -1,0 +1,82 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Lesson 6.2: Hierarchical Clustering | MS Machine Learning</title><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link rel="stylesheet" href="../../assets/css/styles.css"><link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css"></head><body data-root="../../" data-page-id="week-06/lesson-6-2" data-title="Lesson 6.2: Hierarchical Clustering"><a class="skip-link" href="#main">Skip to main content</a><div class="progress" id="readingProgress"></div><div class="mobile-topbar"><button id="openSidebar">&#9776; Navigation</button><span style="font-family:var(--serif);font-weight:700;font-size:.95rem">MS Machine Learning</span><button class="theme-toggle">&#127769; Dark mode</button></div><div class="site-shell"><aside class="sidebar" id="sidebar"><div class="brand"><span class="brand-mark">ML</span><div><h1>Machine Learning</h1><small>Interactive Learning Platform</small></div></div><button id="closeSidebar" class="btn" style="margin:.25rem 0">&#10005; Close</button><div class="nav-search"><label for="navSearch">Search lessons</label><input id="navSearch" class="site-search-input" type="search" placeholder="Type to search&#8230;" autocomplete="off"><div class="mini-results search-results"></div></div><nav id="courseNav"></nav><section class="nav-group"><div class="nav-group-title">Your Progress</div><div id="progressList" class="progress-list small"></div></section></aside><main class="main" id="main"><div class="page-wrap"><nav class="breadcrumbs"><a href="../../index.html">Home</a><span>Week 6 · Unsupervised Learning</span></nav><section class="hero"><div class="eyebrow">Week 6 · Unsupervised Learning</div><h1 class="page-title">Lesson 6.2: Hierarchical Clustering</h1><div class="toolbar"><button id="bookmarkBtn" class="btn">&#9734; Bookmark</button><button id="completeBtn" class="btn">Mark complete</button><button id="quizModeBtn" class="btn">&#127919; Start quiz mode</button><button class="print-page btn">&#128424; Print</button><button class="theme-toggle btn">&#127769; Dark mode</button></div></section><div class="layout-article"><article class="article" id="articleBody"><section>
+<h2>Hierarchical Clustering</h2>
+<p>Hierarchical clustering builds a tree of clusters (dendrogram) without requiring k to be specified in advance. Agglomerative (bottom-up) clustering starts with each point as its own cluster and merges the closest pair at each step. Divisive (top-down) starts with one cluster and recursively splits.</p>
+<pre><code class="language-python">from sklearn.cluster import AgglomerativeClustering
+from sklearn.datasets import make_blobs
+from sklearn.preprocessing import StandardScaler
+from scipy.cluster.hierarchy import dendrogram, linkage
+import numpy as np
+
+X, y_true = make_blobs(n_samples=150, centers=4, random_state=42)
+X = StandardScaler().fit_transform(X)
+
+# Agglomerative clustering with ward linkage
+agg = AgglomerativeClustering(n_clusters=4, linkage='ward')
+labels = agg.fit_predict(X)
+
+from sklearn.metrics import adjusted_rand_score
+print(f"ARI: {adjusted_rand_score(y_true, labels):.4f}")
+</code></pre>
+</section>
+<section>
+<h2>Linkage Criteria</h2>
+<table>
+<thead><tr><th>Linkage</th><th>Distance between clusters A, B</th><th>Behaviour</th></tr></thead>
+<tbody>
+<tr><td>Single</td><td>min distance between any pair</td><td>Chaining — forms elongated clusters</td></tr>
+<tr><td>Complete</td><td>max distance between any pair</td><td>Compact, similar-diameter clusters</td></tr>
+<tr><td>Average</td><td>mean distance between all pairs</td><td>Compromise between single/complete</td></tr>
+<tr><td>Ward</td><td>increase in total within-cluster variance</td><td>Spherical, equal-size clusters — usually best</td></tr>
+</tbody>
+</table>
+<pre><code class="language-python">from scipy.cluster.hierarchy import linkage, dendrogram, fcluster
+import numpy as np
+
+# Linkage matrix: encodes the full merging history
+Z = linkage(X, method='ward')
+# Z[i] = [cluster_a, cluster_b, distance, n_samples_in_new_cluster]
+print(f"Linkage matrix shape: {Z.shape}")  # (n-1, 4)
+
+# Cut dendrogram at different heights to get different k
+for k in [2, 3, 4, 5]:
+    labels = fcluster(Z, k, criterion='maxclust')
+    from sklearn.metrics import silhouette_score
+    sil = silhouette_score(X, labels)
+    print(f"k={k}: silhouette={sil:.4f}")
+</code></pre>
+</section>
+<section>
+<h2>Reading a Dendrogram</h2>
+<pre><code class="language-python">from scipy.cluster.hierarchy import dendrogram, linkage
+import matplotlib
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt
+
+Z = linkage(X[:30], method='ward')   # small subset for readability
+
+plt.figure(figsize=(10, 4))
+dendrogram(Z, truncate_mode='lastp', p=10,
+           show_leaf_counts=True, leaf_rotation=45)
+plt.xlabel("Cluster (sample count)")
+plt.ylabel("Distance (Ward)")
+plt.title("Dendrogram — Ward Linkage")
+plt.tight_layout()
+plt.savefig("/tmp/dendrogram.png", dpi=80)
+
+# The height of a merge = distance between the two clusters
+# Large jumps suggest natural cluster boundaries
+# Cut horizontally at a large gap to choose k
+</code></pre>
+</section>
+<section>
+<h2>Review Questions</h2>
+<div class="quiz-card" data-answer="A">
+<p><strong>Q1.</strong> What advantage does hierarchical clustering have over k-means?</p>
+<label class="quiz-option"><input type="radio" name="q1" value="A"> It does not require specifying k in advance — you can choose k from the dendrogram after fitting</label>
+<label class="quiz-option"><input type="radio" name="q1" value="B"> It is always faster</label>
+<label class="quiz-option"><input type="radio" name="q1" value="C"> It handles high-dimensional data better</label>
+<label class="quiz-option"><input type="radio" name="q1" value="D"> It always finds the global optimum</label>
+<button class="btn check-quiz" style="margin-top:.5rem">Check answer</button>
+</div>
+</section>
+</article><aside><nav class="toc"><h2>Contents</h2><ol id="tocList"></ol></nav></aside></div><footer class="footer"><p>&copy; <span id="year"></span> MS Machine Learning Interactive Learning Platform.</p></footer></div></main></div><script src="../../assets/js/nav-data.js"></script><script src="../../assets/js/search-index.js"></script><script src="../../assets/js/glossary-data.js"></script><script src="../../assets/js/site.js"></script><script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script><script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script></body></html>

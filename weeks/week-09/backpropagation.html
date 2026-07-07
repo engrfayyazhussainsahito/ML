@@ -1,0 +1,149 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Lesson 9.3: Backpropagation | MS Machine Learning</title><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link rel="stylesheet" href="../../assets/css/styles.css"><link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css"></head><body data-root="../../" data-page-id="week-09/lesson-9-3" data-title="Lesson 9.3: Backpropagation"><a class="skip-link" href="#main">Skip to main content</a><div class="progress" id="readingProgress"></div><div class="mobile-topbar"><button id="openSidebar">&#9776; Navigation</button><span style="font-family:var(--serif);font-weight:700;font-size:.95rem">MS Machine Learning</span><button class="theme-toggle">&#127769; Dark mode</button></div><div class="site-shell"><aside class="sidebar" id="sidebar"><div class="brand"><span class="brand-mark">ML</span><div><h1>Machine Learning</h1><small>Interactive Learning Platform</small></div></div><button id="closeSidebar" class="btn" style="margin:.25rem 0">&#10005; Close</button><div class="nav-search"><label for="navSearch">Search lessons</label><input id="navSearch" class="site-search-input" type="search" placeholder="Type to search&#8230;" autocomplete="off"><div class="mini-results search-results"></div></div><nav id="courseNav"></nav><section class="nav-group"><div class="nav-group-title">Your Progress</div><div id="progressList" class="progress-list small"></div></section></aside><main class="main" id="main"><div class="page-wrap"><nav class="breadcrumbs"><a href="../../index.html">Home</a><span>Week 9 · Neural Networks</span></nav><section class="hero"><div class="eyebrow">Week 9 · Neural Networks</div><h1 class="page-title">Lesson 9.3: Backpropagation</h1><div class="toolbar"><button id="bookmarkBtn" class="btn">&#9734; Bookmark</button><button id="completeBtn" class="btn">Mark complete</button><button id="quizModeBtn" class="btn">&#127919; Start quiz mode</button><button class="print-page btn">&#128424; Print</button><button class="theme-toggle btn">&#127769; Dark mode</button></div></section><div class="layout-article"><article class="article" id="articleBody"><section>
+<h2>Backpropagation: The Algorithm</h2>
+<p>Backpropagation (Rumelhart, Hinton, Williams 1986) computes gradients of the loss with respect to all parameters efficiently using the chain rule, traversing the computation graph from output to input. The key insight: each intermediate value's gradient can be computed from the gradients of the nodes it feeds into, reusing earlier computations.</p>
+</section>
+<section>
+<h2>Manual Backprop Through a Single Layer</h2>
+<pre><code class="language-python">import numpy as np
+
+def sigmoid(z): return 1 / (1 + np.exp(-z))
+def sigmoid_grad(z): s = sigmoid(z); return s * (1 - s)
+
+class LinearLayer:
+    def __init__(self, in_dim, out_dim):
+        self.W = np.random.randn(in_dim, out_dim) * np.sqrt(2/in_dim)
+        self.b = np.zeros(out_dim)
+
+    def forward(self, x):
+        self.x = x                   # cache for backward
+        self.z = x @ self.W + self.b # cache pre-activation
+        return self.z
+
+    def backward(self, dL_dz):
+        # Chain rule: dL/dW = x^T dL/dz
+        self.dW = self.x.T @ dL_dz        # gradient of loss w.r.t. W
+        self.db = dL_dz.sum(axis=0)       # gradient w.r.t. b
+        dL_dx = dL_dz @ self.W.T          # pass gradient to previous layer
+        return dL_dx
+
+class ReLU:
+    def forward(self, z):
+        self.mask = (z > 0)
+        return z * self.mask
+
+    def backward(self, dL_da):
+        return dL_da * self.mask           # gradient flows only where z > 0
+
+# Two-layer network, MSE loss
+n, d_in, d_h, d_out = 32, 10, 64, 1
+X = np.random.randn(n, d_in)
+y = np.random.randn(n, d_out)
+
+l1 = LinearLayer(d_in, d_h)
+act = ReLU()
+l2 = LinearLayer(d_h, d_out)
+
+# Forward pass
+z1   = l1.forward(X)
+a1   = act.forward(z1)
+y_hat = l2.forward(a1)
+
+# Loss: MSE
+loss = ((y_hat - y)**2).mean()
+
+# Backward pass
+dL_dy_hat = 2 * (y_hat - y) / n       # dMSE/d(y_hat)
+dL_da1    = l2.backward(dL_dy_hat)
+dL_dz1    = act.backward(dL_da1)
+_         = l1.backward(dL_dz1)
+
+lr = 0.01
+for layer in [l1, l2]:
+    layer.W -= lr * layer.dW
+    layer.b -= lr * layer.db
+print(f"Loss: {loss:.4f}")
+</code></pre>
+</section>
+<section>
+<h2>Automatic Differentiation in PyTorch</h2>
+<pre><code class="language-python">import torch, torch.nn as nn
+
+# PyTorch builds a dynamic computation graph automatically
+x = torch.randn(32, 10, requires_grad=False)
+y = torch.randn(32, 1)
+
+W1 = torch.randn(10, 64, requires_grad=True)
+b1 = torch.zeros(64, requires_grad=True)
+W2 = torch.randn(64, 1, requires_grad=True)
+b2 = torch.zeros(1, requires_grad=True)
+
+# Forward pass — graph is built here
+z1    = x @ W1 + b1
+a1    = torch.relu(z1)
+y_hat = a1 @ W2 + b2
+loss  = ((y_hat - y)**2).mean()
+
+# Backward pass — gradients computed by traversing graph
+loss.backward()
+
+print(f"W1 grad shape: {W1.grad.shape}")  # (10, 64)
+print(f"W2 grad norm:  {W2.grad.norm():.4f}")
+
+# Verify with numerical gradient check
+def numerical_grad(param, loss_fn, h=1e-4):
+    grad = torch.zeros_like(param)
+    for idx in np.ndindex(*param.shape):
+        param.data[idx] += h
+        L_plus = loss_fn()
+        param.data[idx] -= 2*h
+        L_minus = loss_fn()
+        param.data[idx] += h
+        grad[idx] = (L_plus - L_minus) / (2*h)
+    return grad
+</code></pre>
+</section>
+<section>
+<h2>Gradient Flow Problems</h2>
+<pre><code class="language-python">import torch, torch.nn as nn
+
+def check_gradient_flow(model, x, y, loss_fn):
+    """Check gradient norms per layer."""
+    loss_fn(model(x), y).backward()
+    print(f"{'Layer':<40} {'Grad Norm':>12}")
+    for name, p in model.named_parameters():
+        if p.grad is not None:
+            print(f"{name:<40} {p.grad.norm().item():12.6f}")
+
+# Deep sigmoid network (vanishing gradients)
+deep_sigmoid = nn.Sequential(
+    *[nn.Sequential(nn.Linear(64,64), nn.Sigmoid()) for _ in range(10)],
+    nn.Linear(64,1)
+)
+x = torch.randn(32, 64)
+check_gradient_flow(deep_sigmoid, x, torch.randn(32,1), nn.MSELoss())
+# Early layers: gradients ~ 1e-10 (vanished)
+
+# Deep ReLU network with residual connections (healthy gradients)
+class ResBlock(nn.Module):
+    def __init__(self, dim):
+        super().__init__()
+        self.net = nn.Sequential(nn.Linear(dim,dim), nn.ReLU(), nn.Linear(dim,dim))
+    def forward(self, x): return torch.relu(self.net(x) + x)  # skip connection
+
+deep_res = nn.Sequential(*[ResBlock(64) for _ in range(10)], nn.Linear(64,1))
+check_gradient_flow(deep_res, x, torch.randn(32,1), nn.MSELoss())
+# Gradients flow much more uniformly
+</code></pre>
+</section>
+<section>
+<h2>Review Questions</h2>
+<div class="quiz-card" data-answer="A">
+<p><strong>Q1.</strong> In backpropagation, why must we cache intermediate values from the forward pass?</p>
+<label class="quiz-option"><input type="radio" name="q1" value="A"> The chain rule requires local gradients (e.g. activation derivatives) which depend on the forward pass values</label>
+<label class="quiz-option"><input type="radio" name="q1" value="B"> To compute the loss more accurately</label>
+<label class="quiz-option"><input type="radio" name="q1" value="C"> To initialise the next forward pass</label>
+<label class="quiz-option"><input type="radio" name="q1" value="D"> To prevent numerical overflow</label>
+<button class="btn check-quiz" style="margin-top:.5rem">Check answer</button>
+</div>
+</section>
+</article><aside><nav class="toc"><h2>Contents</h2><ol id="tocList"></ol></nav></aside></div><footer class="footer"><p>&copy; <span id="year"></span> MS Machine Learning Interactive Learning Platform.</p></footer></div></main></div><script src="../../assets/js/nav-data.js"></script><script src="../../assets/js/search-index.js"></script><script src="../../assets/js/glossary-data.js"></script><script src="../../assets/js/site.js"></script><script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script><script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script></body></html>

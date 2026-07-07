@@ -1,0 +1,111 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Lesson 13.2: Generative Adversarial Networks | MS Machine Learning</title><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link rel="stylesheet" href="../../assets/css/styles.css"><link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css"></head><body data-root="../../" data-page-id="week-13/lesson-13-2" data-title="Lesson 13.2: Generative Adversarial Networks"><a class="skip-link" href="#main">Skip to main content</a><div class="progress" id="readingProgress"></div><div class="mobile-topbar"><button id="openSidebar">&#9776; Navigation</button><span style="font-family:var(--serif);font-weight:700;font-size:.95rem">MS Machine Learning</span><button class="theme-toggle">&#127769; Dark mode</button></div><div class="site-shell"><aside class="sidebar" id="sidebar"><div class="brand"><span class="brand-mark">ML</span><div><h1>Machine Learning</h1><small>Interactive Learning Platform</small></div></div><button id="closeSidebar" class="btn" style="margin:.25rem 0">&#10005; Close</button><div class="nav-search"><label for="navSearch">Search lessons</label><input id="navSearch" class="site-search-input" type="search" placeholder="Type to search&#8230;" autocomplete="off"><div class="mini-results search-results"></div></div><nav id="courseNav"></nav><section class="nav-group"><div class="nav-group-title">Your Progress</div><div id="progressList" class="progress-list small"></div></section></aside><main class="main" id="main"><div class="page-wrap"><nav class="breadcrumbs"><a href="../../index.html">Home</a><span>Week 13 · Generative Models</span></nav><section class="hero"><div class="eyebrow">Week 13 · Generative Models</div><h1 class="page-title">Lesson 13.2: Generative Adversarial Networks</h1><div class="toolbar"><button id="bookmarkBtn" class="btn">&#9734; Bookmark</button><button id="completeBtn" class="btn">Mark complete</button><button id="quizModeBtn" class="btn">&#127919; Start quiz mode</button><button class="print-page btn">&#128424; Print</button><button class="theme-toggle btn">&#127769; Dark mode</button></div></section><div class="layout-article"><article class="article" id="articleBody"><section>
+<h2>The Adversarial Framework</h2>
+<p>GANs (Goodfellow et al., 2014) train two networks in competition: a <strong>generator</strong> G that produces fake samples, and a <strong>discriminator</strong> D that tries to distinguish real from fake. G learns to fool D; D learns to detect fakes. At equilibrium, G produces samples indistinguishable from real data, and D outputs 0.5 (maximum uncertainty) everywhere.</p>
+<blockquote>min_G max_D  E[log D(x)] + E[log(1 − D(G(z)))]</blockquote>
+</section>
+<section>
+<h2>DCGAN Implementation</h2>
+<pre><code class="language-python">import torch, torch.nn as nn
+
+class Generator(nn.Module):
+    def __init__(self, latent_dim=100, img_channels=1, features=64):
+        super().__init__()
+        self.net = nn.Sequential(
+            # Input: (latent_dim, 1, 1) -> (features*8, 4, 4)
+            nn.ConvTranspose2d(latent_dim, features*8, 4, 1, 0, bias=False),
+            nn.BatchNorm2d(features*8), nn.ReLU(True),
+            # -> (features*4, 8, 8)
+            nn.ConvTranspose2d(features*8, features*4, 4, 2, 1, bias=False),
+            nn.BatchNorm2d(features*4), nn.ReLU(True),
+            # -> (features*2, 16, 16)
+            nn.ConvTranspose2d(features*4, features*2, 4, 2, 1, bias=False),
+            nn.BatchNorm2d(features*2), nn.ReLU(True),
+            # -> (features, 32, 32)
+            nn.ConvTranspose2d(features*2, features, 4, 2, 1, bias=False),
+            nn.BatchNorm2d(features), nn.ReLU(True),
+            # -> (img_channels, 64, 64)
+            nn.ConvTranspose2d(features, img_channels, 4, 2, 1, bias=False),
+            nn.Tanh()   # output in [-1, 1]
+        )
+    def forward(self, z): return self.net(z)
+
+class Discriminator(nn.Module):
+    def __init__(self, img_channels=1, features=64):
+        super().__init__()
+        self.net = nn.Sequential(
+            nn.Conv2d(img_channels, features,   4, 2, 1, bias=False), nn.LeakyReLU(0.2),
+            nn.Conv2d(features,     features*2, 4, 2, 1, bias=False), nn.BatchNorm2d(features*2), nn.LeakyReLU(0.2),
+            nn.Conv2d(features*2,   features*4, 4, 2, 1, bias=False), nn.BatchNorm2d(features*4), nn.LeakyReLU(0.2),
+            nn.Conv2d(features*4,   features*8, 4, 2, 1, bias=False), nn.BatchNorm2d(features*8), nn.LeakyReLU(0.2),
+            nn.Conv2d(features*8,   1,           4, 1, 0, bias=False), nn.Sigmoid()
+        )
+    def forward(self, x): return self.net(x).view(-1)
+
+G = Generator(); D = Discriminator()
+z = torch.randn(8, 100, 1, 1)
+fake = G(z)
+print(f"Generated: {fake.shape}")      # (8, 1, 64, 64)
+print(f"D(fake):   {D(fake).shape}")   # (8,)
+</code></pre>
+</section>
+<section>
+<h2>GAN Training Loop</h2>
+<pre><code class="language-python">import torch, torch.nn as nn
+
+criterion = nn.BCELoss()
+opt_G = torch.optim.Adam(G.parameters(), lr=2e-4, betas=(0.5, 0.999))
+opt_D = torch.optim.Adam(D.parameters(), lr=2e-4, betas=(0.5, 0.999))
+latent_dim = 100
+
+def train_step(real_imgs):
+    batch = real_imgs.size(0)
+    real_labels = torch.ones(batch)
+    fake_labels = torch.zeros(batch)
+
+    # --- Train Discriminator ---
+    opt_D.zero_grad()
+    d_real = D(real_imgs)
+    loss_d_real = criterion(d_real, real_labels)
+
+    z = torch.randn(batch, latent_dim, 1, 1)
+    fake = G(z).detach()   # detach: don't backprop through G here
+    d_fake = D(fake)
+    loss_d_fake = criterion(d_fake, fake_labels)
+    loss_D = (loss_d_real + loss_d_fake) / 2
+    loss_D.backward(); opt_D.step()
+
+    # --- Train Generator ---
+    opt_G.zero_grad()
+    z = torch.randn(batch, latent_dim, 1, 1)
+    fake = G(z)
+    g_out = D(fake)
+    loss_G = criterion(g_out, real_labels)   # G wants D to say "real"
+    loss_G.backward(); opt_G.step()
+
+    return loss_D.item(), loss_G.item()
+</code></pre>
+</section>
+<section>
+<h2>GAN Pathologies and Solutions</h2>
+<table>
+<thead><tr><th>Problem</th><th>Symptom</th><th>Solution</th></tr></thead>
+<tbody>
+<tr><td>Mode collapse</td><td>G generates only one or few modes</td><td>Wasserstein GAN, minibatch discrimination</td></tr>
+<tr><td>Training instability</td><td>Loss oscillates, G/D diverge</td><td>Spectral normalisation, gradient penalty</td></tr>
+<tr><td>Vanishing gradients</td><td>D too strong, G gets no gradient</td><td>Label smoothing, feature matching</td></tr>
+<tr><td>Checkerboard artefacts</td><td>Grid pattern in generated images</td><td>Use resize+conv instead of ConvTranspose2d</td></tr>
+</tbody>
+</table>
+</section>
+<section>
+<h2>Review Questions</h2>
+<div class="quiz-card" data-answer="B">
+<p><strong>Q1.</strong> Mode collapse in a GAN means:</p>
+<label class="quiz-option"><input type="radio" name="q1" value="A"> The discriminator collapses to always outputting 0.5</label>
+<label class="quiz-option"><input type="radio" name="q1" value="B"> The generator learns to produce only a few types of samples, ignoring the full diversity of the training distribution</label>
+<label class="quiz-option"><input type="radio" name="q1" value="C"> The model runs out of memory</label>
+<label class="quiz-option"><input type="radio" name="q1" value="D"> Training loss reaches zero too quickly</label>
+<button class="btn check-quiz" style="margin-top:.5rem">Check answer</button>
+</div>
+</section>
+</article><aside><nav class="toc"><h2>Contents</h2><ol id="tocList"></ol></nav></aside></div><footer class="footer"><p>&copy; <span id="year"></span> MS Machine Learning Interactive Learning Platform.</p></footer></div></main></div><script src="../../assets/js/nav-data.js"></script><script src="../../assets/js/search-index.js"></script><script src="../../assets/js/glossary-data.js"></script><script src="../../assets/js/site.js"></script><script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script><script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script></body></html>

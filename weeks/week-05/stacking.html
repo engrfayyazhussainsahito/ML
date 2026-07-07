@@ -1,0 +1,100 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Lesson 5.3: Stacking and Blending | MS Machine Learning</title><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link rel="stylesheet" href="../../assets/css/styles.css"><link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css"></head><body data-root="../../" data-page-id="week-05/lesson-5-3" data-title="Lesson 5.3: Stacking and Blending"><a class="skip-link" href="#main">Skip to main content</a><div class="progress" id="readingProgress"></div><div class="mobile-topbar"><button id="openSidebar">&#9776; Navigation</button><span style="font-family:var(--serif);font-weight:700;font-size:.95rem">MS Machine Learning</span><button class="theme-toggle">&#127769; Dark mode</button></div><div class="site-shell"><aside class="sidebar" id="sidebar"><div class="brand"><span class="brand-mark">ML</span><div><h1>Machine Learning</h1><small>Interactive Learning Platform</small></div></div><button id="closeSidebar" class="btn" style="margin:.25rem 0">&#10005; Close</button><div class="nav-search"><label for="navSearch">Search lessons</label><input id="navSearch" class="site-search-input" type="search" placeholder="Type to search&#8230;" autocomplete="off"><div class="mini-results search-results"></div></div><nav id="courseNav"></nav><section class="nav-group"><div class="nav-group-title">Your Progress</div><div id="progressList" class="progress-list small"></div></section></aside><main class="main" id="main"><div class="page-wrap"><nav class="breadcrumbs"><a href="../../index.html">Home</a><span>Week 5 · Ensemble Methods</span></nav><section class="hero"><div class="eyebrow">Week 5 · Ensemble Methods</div><h1 class="page-title">Lesson 5.3: Stacking and Blending</h1><div class="toolbar"><button id="bookmarkBtn" class="btn">&#9734; Bookmark</button><button id="completeBtn" class="btn">Mark complete</button><button id="quizModeBtn" class="btn">&#127919; Start quiz mode</button><button class="print-page btn">&#128424; Print</button><button class="theme-toggle btn">&#127769; Dark mode</button></div></section><div class="layout-article"><article class="article" id="articleBody"><section>
+<h2>Stacking: Learning to Combine</h2>
+<p>Stacking (stacked generalisation) trains a meta-learner to optimally combine the predictions of several base models. Unlike simple averaging, the meta-learner can learn when to trust each base model — for example, weighting a gradient booster higher on structured features and a neural network higher on embeddings.</p>
+</section>
+<section>
+<h2>Stacking Implementation</h2>
+<pre><code class="language-python">from sklearn.ensemble import StackingClassifier
+from sklearn.linear_model import LogisticRegression
+from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier
+from sklearn.svm import SVC
+from sklearn.datasets import make_classification
+from sklearn.model_selection import train_test_split, cross_val_score
+import numpy as np
+
+X, y = make_classification(n_samples=2000, n_features=20, random_state=42)
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2)
+
+base_learners = [
+    ('rf',  RandomForestClassifier(n_estimators=200, random_state=42)),
+    ('gbm', GradientBoostingClassifier(n_estimators=200, random_state=42)),
+    ('svc', SVC(kernel='rbf', probability=True, random_state=42)),
+]
+
+# Meta-learner: logistic regression on out-of-fold base model predictions
+stack = StackingClassifier(
+    estimators=base_learners,
+    final_estimator=LogisticRegression(),
+    cv=5,                         # out-of-fold strategy avoids leakage
+    stack_method='predict_proba', # pass probabilities to meta-learner
+    n_jobs=-1
+)
+
+stack.fit(X_train, y_train)
+print(f"Stack accuracy: {stack.score(X_test, y_test):.4f}")
+
+# Compare individual base learners
+for name, clf in base_learners:
+    clf.fit(X_train, y_train)
+    print(f"{name} accuracy: {clf.score(X_test, y_test):.4f}")
+</code></pre>
+</section>
+<section>
+<h2>Out-of-Fold Predictions (Manual)</h2>
+<p>The critical detail: base model predictions for the meta-learner must be out-of-fold — the meta-learner must never see predictions made on data the base model trained on. StackingClassifier handles this automatically; here is the manual version for understanding.</p>
+<pre><code class="language-python">from sklearn.model_selection import StratifiedKFold
+import numpy as np
+
+def make_oof_predictions(model, X, y, n_folds=5):
+    """Generate out-of-fold predictions."""
+    oof = np.zeros((len(X), 2))  # probability for each class
+    skf = StratifiedKFold(n_splits=n_folds, shuffle=True, random_state=42)
+
+    for fold, (train_idx, val_idx) in enumerate(skf.split(X, y)):
+        model.fit(X[train_idx], y[train_idx])
+        oof[val_idx] = model.predict_proba(X[val_idx])
+
+    return oof
+
+rf_oof  = make_oof_predictions(RandomForestClassifier(n_estimators=100), X_train, y_train)
+gbm_oof = make_oof_predictions(GradientBoostingClassifier(n_estimators=100), X_train, y_train)
+
+# Stack OOF predictions as features for the meta-learner
+meta_features_train = np.hstack([rf_oof, gbm_oof])  # (n_train, 4)
+
+meta = LogisticRegression()
+meta.fit(meta_features_train, y_train)
+
+# For test: refit base models on full train, then predict
+rf_full  = RandomForestClassifier(n_estimators=100).fit(X_train, y_train)
+gbm_full = GradientBoostingClassifier(n_estimators=100).fit(X_train, y_train)
+meta_test = np.hstack([rf_full.predict_proba(X_test),
+                        gbm_full.predict_proba(X_test)])
+print(f"Manual stack accuracy: {(meta.predict(meta_test) == y_test).mean():.4f}")
+</code></pre>
+</section>
+<section>
+<h2>Blending vs Stacking</h2>
+<table>
+<thead><tr><th></th><th>Blending</th><th>Stacking</th></tr></thead>
+<tbody>
+<tr><td>Meta-learner training data</td><td>Holdout set</td><td>Out-of-fold predictions</td></tr>
+<tr><td>Data efficiency</td><td>Lower</td><td>Higher</td></tr>
+<tr><td>Leakage risk</td><td>Lower</td><td>Higher if done wrong</td></tr>
+<tr><td>Implementation</td><td>Simpler</td><td>More complex</td></tr>
+<tr><td>Common use</td><td>Kaggle late-stage</td><td>Production ensembles</td></tr>
+</tbody>
+</table>
+</section>
+<section>
+<h2>Review Questions</h2>
+<div class="quiz-card" data-answer="C">
+<p><strong>Q1.</strong> Why must the meta-learner in stacking be trained on out-of-fold predictions rather than full training set predictions?</p>
+<label class="quiz-option"><input type="radio" name="q1" value="A"> Out-of-fold predictions are more accurate</label>
+<label class="quiz-option"><input type="radio" name="q1" value="B"> It reduces the number of base models needed</label>
+<label class="quiz-option"><input type="radio" name="q1" value="C"> Training set predictions are overfit — using them would teach the meta-learner to trust overfit outputs</label>
+<label class="quiz-option"><input type="radio" name="q1" value="D"> It speeds up training</label>
+<button class="btn check-quiz" style="margin-top:.5rem">Check answer</button>
+</div>
+</section>
+</article><aside><nav class="toc"><h2>Contents</h2><ol id="tocList"></ol></nav></aside></div><footer class="footer"><p>&copy; <span id="year"></span> MS Machine Learning Interactive Learning Platform.</p></footer></div></main></div><script src="../../assets/js/nav-data.js"></script><script src="../../assets/js/search-index.js"></script><script src="../../assets/js/glossary-data.js"></script><script src="../../assets/js/site.js"></script><script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script><script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script></body></html>

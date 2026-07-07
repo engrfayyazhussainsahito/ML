@@ -1,0 +1,102 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Lesson 16.4: Research Pathways | MS Machine Learning</title><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link rel="stylesheet" href="../../assets/css/styles.css"><link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css"></head><body data-root="../../" data-page-id="week-16/lesson-16-4" data-title="Lesson 16.4: Research Pathways"><a class="skip-link" href="#main">Skip to main content</a><div class="progress" id="readingProgress"></div><div class="mobile-topbar"><button id="openSidebar">&#9776; Navigation</button><span style="font-family:var(--serif);font-weight:700;font-size:.95rem">MS Machine Learning</span><button class="theme-toggle">&#127769; Dark mode</button></div><div class="site-shell"><aside class="sidebar" id="sidebar"><div class="brand"><span class="brand-mark">ML</span><div><h1>Machine Learning</h1><small>Interactive Learning Platform</small></div></div><button id="closeSidebar" class="btn" style="margin:.25rem 0">&#10005; Close</button><div class="nav-search"><label for="navSearch">Search lessons</label><input id="navSearch" class="site-search-input" type="search" placeholder="Type to search&#8230;" autocomplete="off"><div class="mini-results search-results"></div></div><nav id="courseNav"></nav><section class="nav-group"><div class="nav-group-title">Your Progress</div><div id="progressList" class="progress-list small"></div></section></aside><main class="main" id="main"><div class="page-wrap"><nav class="breadcrumbs"><a href="../../index.html">Home</a><span>Week 16 · Capstone</span></nav><section class="hero"><div class="eyebrow">Week 16 · Capstone</div><h1 class="page-title">Lesson 16.4: Research Pathways</h1><div class="toolbar"><button id="bookmarkBtn" class="btn">&#9734; Bookmark</button><button id="completeBtn" class="btn">Mark complete</button><button id="quizModeBtn" class="btn">&#127919; Start quiz mode</button><button class="print-page btn">&#128424; Print</button><button class="theme-toggle btn">&#127769; Dark mode</button></div></section><div class="layout-article"><article class="article" id="articleBody"><section>
+<h2>Is Research Right for You?</h2>
+<p>ML research involves generating novel knowledge — new algorithms, theoretical analyses, empirical insights, or new applications. It requires tolerance for long periods of uncertainty, the ability to read and situate your work in existing literature, and the ability to communicate clearly in writing. If you want to push the frontier rather than apply existing tools, a research pathway may suit you.</p>
+</section>
+<section>
+<h2>Subfield Selection</h2>
+<pre><code class="language-python">subfields = {
+    "Theoretical ML": {
+        "Topics": ["Learning theory", "Generalisation bounds", "Optimisation theory"],
+        "Skills": "Strong mathematics (probability, analysis, linear algebra)",
+        "Venues": "COLT, NeurIPS theory track, JMLR",
+        "Entry": "PhD in CS/Math/Statistics"
+    },
+    "Deep Learning": {
+        "Topics": ["Architecture design", "Training dynamics", "Scaling laws"],
+        "Skills": "PyTorch, strong empirical skills, GPU compute",
+        "Venues": "NeurIPS, ICML, ICLR",
+        "Entry": "PhD or strong portfolio + publications"
+    },
+    "NLP": {
+        "Topics": ["Language models", "Reasoning", "Multilingual", "Low-resource"],
+        "Skills": "HuggingFace, transformers, linguistic knowledge helpful",
+        "Venues": "ACL, EMNLP, NAACL",
+        "Entry": "PhD or industry research position"
+    },
+    "Computer Vision": {
+        "Topics": ["Recognition", "Generation", "3D", "Video", "Medical imaging"],
+        "Skills": "torchvision, CNN/ViT architecture knowledge",
+        "Venues": "CVPR, ICCV, ECCV",
+        "Entry": "PhD or industry (Meta AI, Google, Apple)"
+    },
+    "Responsible AI": {
+        "Topics": ["Fairness", "Safety", "Interpretability", "Privacy"],
+        "Skills": "Interdisciplinary (CS + social science/ethics/law)",
+        "Venues": "FAccT, AIES, NeurIPS ethics track",
+        "Entry": "Diverse backgrounds welcome"
+    },
+}
+</code></pre>
+</section>
+<section>
+<h2>Finding a Research Position</h2>
+<pre><code class="language-python">pathways = {
+    "PhD": {
+        "Duration": "4-6 years",
+        "Funding": "Usually fully funded (stipend + tuition waiver)",
+        "Process": [
+            "1. Read papers in your target subfield — identify 5-10 professors",
+            "2. Email professors with a personalised, specific message",
+            "3. Reference a specific paper of theirs and propose a concrete research direction",
+            "4. Apply to 10-15 programmes with strong SOP and 3 letters",
+        ],
+        "SOP advice": [
+            "Why research (not just why the field)?",
+            "Specific research experiences and outcomes",
+            "Specific professors you want to work with and why",
+            "Concrete research questions you want to pursue",
+        ]
+    },
+    "Industry Research": {
+        "Labs": ["DeepMind", "Google Brain/Research", "Meta AI", "Microsoft Research",
+                 "Apple ML Research", "Amazon Science", "Anthropic"],
+        "Entry levels": ["Research Scientist", "Research Engineer", "Resident/Fellow"],
+        "Requirements": "Published papers at top venues or strong PhD",
+    },
+    "Research Engineer (no PhD)": {
+        "Role": "Implement and run experiments for research teams",
+        "Requirements": "Strong coding, some ML research exposure, portfolio",
+        "Path": "Competitive but possible with strong track record"
+    }
+}
+</code></pre>
+</section>
+<section>
+<h2>Building Research Credibility</h2>
+<pre><code class="language-python">early_steps = [
+    "Reproduce a published result — learn the codebase, understand every detail",
+    "Extend the reproduction: what happens if you change X?",
+    "Write a blog post explaining the paper clearly (builds writing skills)",
+    "Join a reading group: weekly paper discussions build breadth quickly",
+    "Contribute to open-source ML projects (huggingface, pytorch-lightning)",
+    "Submit to workshops before main conferences (lower bar, faster feedback)",
+    "Collaborate: find a co-author via Twitter, Discord ML communities",
+    "Apply for research internships (DeepMind, Google, Meta Summer Research)",
+]
+
+for step in early_steps:
+    print(f"  - {step}")
+</code></pre>
+</section>
+<section>
+<h2>Review Questions</h2>
+<div class="quiz-card" data-answer="A">
+<p><strong>Q1.</strong> When emailing a professor about a PhD position, what approach is most effective?</p>
+<label class="quiz-option"><input type="radio" name="q1" value="A"> Reference a specific paper of theirs, explain what you found interesting, and propose a concrete research direction you could pursue together</label>
+<label class="quiz-option"><input type="radio" name="q1" value="B"> Send a generic email to 100 professors simultaneously</label>
+<label class="quiz-option"><input type="radio" name="q1" value="C"> Focus only on your GPA and test scores</label>
+<label class="quiz-option"><input type="radio" name="q1" value="D"> Ask if they have any open positions without mentioning specific research interests</label>
+<button class="btn check-quiz" style="margin-top:.5rem">Check answer</button>
+</div>
+</section>
+</article><aside><nav class="toc"><h2>Contents</h2><ol id="tocList"></ol></nav></aside></div><footer class="footer"><p>&copy; <span id="year"></span> MS Machine Learning Interactive Learning Platform.</p></footer></div></main></div><script src="../../assets/js/nav-data.js"></script><script src="../../assets/js/search-index.js"></script><script src="../../assets/js/glossary-data.js"></script><script src="../../assets/js/site.js"></script><script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script><script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script></body></html>

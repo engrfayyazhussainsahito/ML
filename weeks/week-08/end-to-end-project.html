@@ -1,0 +1,141 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Lesson 8.1: End-to-End Project | MS Machine Learning</title><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link rel="stylesheet" href="../../assets/css/styles.css"><link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css"></head><body data-root="../../" data-page-id="week-08/lesson-8-1" data-title="Lesson 8.1: End-to-End Project"><a class="skip-link" href="#main">Skip to main content</a><div class="progress" id="readingProgress"></div><div class="mobile-topbar"><button id="openSidebar">&#9776; Navigation</button><span style="font-family:var(--serif);font-weight:700;font-size:.95rem">MS Machine Learning</span><button class="theme-toggle">&#127769; Dark mode</button></div><div class="site-shell"><aside class="sidebar" id="sidebar"><div class="brand"><span class="brand-mark">ML</span><div><h1>Machine Learning</h1><small>Interactive Learning Platform</small></div></div><button id="closeSidebar" class="btn" style="margin:.25rem 0">&#10005; Close</button><div class="nav-search"><label for="navSearch">Search lessons</label><input id="navSearch" class="site-search-input" type="search" placeholder="Type to search&#8230;" autocomplete="off"><div class="mini-results search-results"></div></div><nav id="courseNav"></nav><section class="nav-group"><div class="nav-group-title">Your Progress</div><div id="progressList" class="progress-list small"></div></section></aside><main class="main" id="main"><div class="page-wrap"><nav class="breadcrumbs"><a href="../../index.html">Home</a><span>Week 8 · Midterm Practicum</span></nav><section class="hero"><div class="eyebrow">Week 8 · Midterm Practicum</div><h1 class="page-title">Lesson 8.1: End-to-End Project</h1><div class="toolbar"><button id="bookmarkBtn" class="btn">&#9734; Bookmark</button><button id="completeBtn" class="btn">Mark complete</button><button id="quizModeBtn" class="btn">&#127919; Start quiz mode</button><button class="print-page btn">&#128424; Print</button><button class="theme-toggle btn">&#127769; Dark mode</button></div></section><div class="layout-article"><article class="article" id="articleBody"><section>
+<h2>The Complete ML Project</h2>
+<p>This lesson walks through every stage of an end-to-end ML project on the Titanic dataset — the canonical learning example. Every line of code reflects real practices used in production ML: defensive data loading, systematic EDA, leakage-free preprocessing, model comparison, and confident final evaluation.</p>
+</section>
+<section>
+<h2>Stage 1: Load and Inspect</h2>
+<pre><code class="language-python">import pandas as pd
+import numpy as np
+from sklearn.model_selection import train_test_split
+
+# Load
+df = pd.read_csv("titanic.csv")
+
+print(f"Shape: {df.shape}")
+print(f"Columns: {df.columns.tolist()}")
+print(f"Dtypes:\n{df.dtypes}")
+print(f"Missing:\n{df.isnull().mean().round(3)}")
+print(f"Target distribution:\n{df['Survived'].value_counts(normalize=True)}")
+
+# Split immediately — all EDA on train only
+df_train, df_test = train_test_split(df, test_size=0.2, 
+                                     stratify=df['Survived'], random_state=42)
+print(f"Train: {len(df_train)}, Test: {len(df_test)}")
+</code></pre>
+</section>
+<section>
+<h2>Stage 2: EDA on Train Only</h2>
+<pre><code class="language-python">import pandas as pd, numpy as np
+
+# Survival rate by feature
+print("By sex:")
+print(df_train.groupby('Sex')['Survived'].mean().round(3))
+
+print("\nBy class:")
+print(df_train.groupby('Pclass')['Survived'].mean().round(3))
+
+print("\nAge statistics:")
+print(df_train['Age'].describe().round(2))
+
+# Correlations with target
+num_features = df_train.select_dtypes(include=np.number).columns
+corr_with_target = df_train[num_features].corrwith(df_train['Survived'])
+print("\nCorrelations with Survived:")
+print(corr_with_target.sort_values(key=abs, ascending=False))
+</code></pre>
+</section>
+<section>
+<h2>Stage 3: Feature Engineering and Pipeline</h2>
+<pre><code class="language-python">from sklearn.pipeline import Pipeline
+from sklearn.compose import ColumnTransformer
+from sklearn.preprocessing import StandardScaler, OneHotEncoder
+from sklearn.impute import SimpleImputer
+
+def engineer_features(df):
+    """Create new features from domain knowledge."""
+    df = df.copy()
+    df['FamilySize'] = df['SibSp'] + df['Parch'] + 1
+    df['IsAlone'] = (df['FamilySize'] == 1).astype(int)
+    df['Title'] = df['Name'].str.extract(r' ([A-Za-z]+)\.', expand=False)
+    df['Title'] = df['Title'].replace(
+        ['Lady','Countess','Capt','Col','Don','Dr','Major','Rev','Sir','Jonkheer','Dona'], 'Rare')
+    df['Title'] = df['Title'].replace({'Mlle':'Miss','Ms':'Miss','Mme':'Mrs'})
+    return df
+
+df_train_eng = engineer_features(df_train)
+
+num_cols = ['Age', 'Fare', 'FamilySize']
+cat_cols = ['Sex', 'Pclass', 'Embarked', 'Title']
+
+preprocessor = ColumnTransformer([
+    ('num', Pipeline([('imp', SimpleImputer(strategy='median')),
+                      ('sc',  StandardScaler())]), num_cols),
+    ('cat', Pipeline([('imp', SimpleImputer(strategy='most_frequent')),
+                      ('ohe', OneHotEncoder(handle_unknown='ignore',
+                                            sparse_output=False))]), cat_cols),
+])
+</code></pre>
+</section>
+<section>
+<h2>Stage 4: Model Comparison</h2>
+<pre><code class="language-python">from sklearn.linear_model import LogisticRegression
+from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier
+from sklearn.model_selection import StratifiedKFold, cross_validate
+import numpy as np
+
+X_train = df_train_eng[num_cols + cat_cols]
+y_train = df_train_eng['Survived']
+
+models = {
+    'LogReg': LogisticRegression(C=0.1, max_iter=1000),
+    'RF':     RandomForestClassifier(n_estimators=200, max_depth=6, random_state=42),
+    'GBM':    GradientBoostingClassifier(n_estimators=300, max_depth=3,
+                                          learning_rate=0.05, random_state=42),
+}
+
+cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
+print(f"{'Model':10s}  {'Accuracy':>10s}  {'AUC':>10s}")
+for name, clf in models.items():
+    pipe = Pipeline([('pre', preprocessor), ('clf', clf)])
+    res = cross_validate(pipe, X_train, y_train, cv=cv,
+                         scoring=['accuracy', 'roc_auc'], n_jobs=-1)
+    acc = res['test_accuracy'].mean()
+    auc = res['test_roc_auc'].mean()
+    print(f"{name:10s}  {acc:.4f}       {auc:.4f}")
+</code></pre>
+</section>
+<section>
+<h2>Stage 5: Final Evaluation</h2>
+<pre><code class="language-python">from sklearn.metrics import classification_report, roc_auc_score
+import numpy as np
+
+# Refit best model on all training data
+best_pipe = Pipeline([('pre', preprocessor),
+                      ('clf', GradientBoostingClassifier(n_estimators=300,
+                                max_depth=3, learning_rate=0.05, random_state=42))])
+best_pipe.fit(X_train, y_train)
+
+# Evaluate on held-out test set (done ONCE)
+df_test_eng = engineer_features(df_test)
+X_test = df_test_eng[num_cols + cat_cols]
+y_test = df_test_eng['Survived']
+
+y_pred = best_pipe.predict(X_test)
+y_prob = best_pipe.predict_proba(X_test)[:, 1]
+
+print(classification_report(y_test, y_pred, target_names=['Did not survive','Survived']))
+print(f"AUC: {roc_auc_score(y_test, y_prob):.4f}")
+</code></pre>
+</section>
+<section>
+<h2>Review Questions</h2>
+<div class="quiz-card" data-answer="D">
+<p><strong>Q1.</strong> When in the ML workflow should you first look at the test set?</p>
+<label class="quiz-option"><input type="radio" name="q1" value="A"> During EDA to understand the data distribution</label>
+<label class="quiz-option"><input type="radio" name="q1" value="B"> After feature engineering to check for leakage</label>
+<label class="quiz-option"><input type="radio" name="q1" value="C"> During model selection to compare models</label>
+<label class="quiz-option"><input type="radio" name="q1" value="D"> After all development is complete, for the single final evaluation</label>
+<button class="btn check-quiz" style="margin-top:.5rem">Check answer</button>
+</div>
+</section>
+</article><aside><nav class="toc"><h2>Contents</h2><ol id="tocList"></ol></nav></aside></div><footer class="footer"><p>&copy; <span id="year"></span> MS Machine Learning Interactive Learning Platform.</p></footer></div></main></div><script src="../../assets/js/nav-data.js"></script><script src="../../assets/js/search-index.js"></script><script src="../../assets/js/glossary-data.js"></script><script src="../../assets/js/site.js"></script><script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script><script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script></body></html>

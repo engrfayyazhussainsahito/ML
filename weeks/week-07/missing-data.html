@@ -1,0 +1,105 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Lesson 7.3: Handling Missing Data | MS Machine Learning</title><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link rel="stylesheet" href="../../assets/css/styles.css"><link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css"></head><body data-root="../../" data-page-id="week-07/lesson-7-3" data-title="Lesson 7.3: Handling Missing Data"><a class="skip-link" href="#main">Skip to main content</a><div class="progress" id="readingProgress"></div><div class="mobile-topbar"><button id="openSidebar">&#9776; Navigation</button><span style="font-family:var(--serif);font-weight:700;font-size:.95rem">MS Machine Learning</span><button class="theme-toggle">&#127769; Dark mode</button></div><div class="site-shell"><aside class="sidebar" id="sidebar"><div class="brand"><span class="brand-mark">ML</span><div><h1>Machine Learning</h1><small>Interactive Learning Platform</small></div></div><button id="closeSidebar" class="btn" style="margin:.25rem 0">&#10005; Close</button><div class="nav-search"><label for="navSearch">Search lessons</label><input id="navSearch" class="site-search-input" type="search" placeholder="Type to search&#8230;" autocomplete="off"><div class="mini-results search-results"></div></div><nav id="courseNav"></nav><section class="nav-group"><div class="nav-group-title">Your Progress</div><div id="progressList" class="progress-list small"></div></section></aside><main class="main" id="main"><div class="page-wrap"><nav class="breadcrumbs"><a href="../../index.html">Home</a><span>Week 7 · Feature Engineering</span></nav><section class="hero"><div class="eyebrow">Week 7 · Feature Engineering</div><h1 class="page-title">Lesson 7.3: Handling Missing Data</h1><div class="toolbar"><button id="bookmarkBtn" class="btn">&#9734; Bookmark</button><button id="completeBtn" class="btn">Mark complete</button><button id="quizModeBtn" class="btn">&#127919; Start quiz mode</button><button class="print-page btn">&#128424; Print</button><button class="theme-toggle btn">&#127769; Dark mode</button></div></section><div class="layout-article"><article class="article" id="articleBody"><section>
+<h2>Types of Missingness</h2>
+<p>Understanding <em>why</em> data is missing is as important as knowing <em>how much</em>. The mechanism determines which imputation strategies are valid:</p>
+<table>
+<thead><tr><th>Mechanism</th><th>Definition</th><th>Example</th><th>Safe to impute?</th></tr></thead>
+<tbody>
+<tr><td><strong>MCAR</strong></td><td>Missing completely at random — independent of all variables</td><td>Random sensor failure</td><td>Yes</td></tr>
+<tr><td><strong>MAR</strong></td><td>Missing at random — depends on observed variables, not missing ones</td><td>Men less likely to report weight</td><td>Yes (with care)</td></tr>
+<tr><td><strong>MNAR</strong></td><td>Missing not at random — depends on the missing value itself</td><td>High earners skip income field</td><td>Requires domain knowledge</td></tr>
+</tbody>
+</table>
+</section>
+<section>
+<h2>Diagnosing Missing Data</h2>
+<pre><code class="language-python">import pandas as pd
+import numpy as np
+
+df = pd.read_csv("data.csv")
+
+# Summary of missingness
+missing_summary = pd.DataFrame({
+    'count':   df.isnull().sum(),
+    'pct':     df.isnull().mean() * 100,
+    'dtype':   df.dtypes
+}).query('count > 0').sort_values('pct', ascending=False)
+print(missing_summary)
+
+# Test for MCAR: is missingness correlated with other features?
+for col in df.columns[df.isnull().any()]:
+    missing_mask = df[col].isnull().astype(int)
+    for other in df.select_dtypes(include=np.number).columns:
+        if other != col and df[other].isnull().sum() == 0:
+            corr = missing_mask.corr(df[other])
+            if abs(corr) > 0.1:
+                print(f"Missingness in {col} correlated with {other}: r={corr:.3f}")
+</code></pre>
+</section>
+<section>
+<h2>Imputation Strategies</h2>
+<pre><code class="language-python">from sklearn.impute import SimpleImputer, KNNImputer
+from sklearn.experimental import enable_iterative_imputer
+from sklearn.impute import IterativeImputer
+import numpy as np
+
+X = np.random.randn(100, 5)
+# Introduce ~10% missingness at random
+X_missing = X.copy()
+X_missing[np.random.rand(*X.shape) < 0.1] = np.nan
+
+# 1. Simple imputation: mean/median/mode/constant
+for strategy in ['mean', 'median']:
+    imp = SimpleImputer(strategy=strategy)
+    X_imp = imp.fit_transform(X_missing)
+    mse = np.nanmean((X_imp - X)**2)
+    print(f"{strategy:8s} MSE: {mse:.4f}")
+
+# 2. KNN imputation: impute from k nearest non-missing neighbours
+knn_imp = KNNImputer(n_neighbors=5)
+X_knn = knn_imp.fit_transform(X_missing)
+mse_knn = np.nanmean((X_knn - X)**2)
+print(f"KNN      MSE: {mse_knn:.4f}")
+
+# 3. Iterative (MICE): model each feature as function of others
+mice = IterativeImputer(max_iter=10, random_state=42)
+X_mice = mice.fit_transform(X_missing)
+mse_mice = np.nanmean((X_mice - X)**2)
+print(f"MICE     MSE: {mse_mice:.4f}")
+</code></pre>
+</section>
+<section>
+<h2>Missing Indicator Features</h2>
+<pre><code class="language-python">from sklearn.impute import SimpleImputer, MissingIndicator
+from sklearn.pipeline import Pipeline, FeatureUnion
+import numpy as np
+
+# Adding a binary "was_missing" column preserves the missingness signal
+# This is valuable when missingness itself is informative (MNAR)
+
+indicator = MissingIndicator(features='missing-only')
+imputer   = SimpleImputer(strategy='mean')
+
+# FeatureUnion: append indicator columns to imputed columns
+combined = FeatureUnion([
+    ('imputed',   imputer),
+    ('indicator', indicator)
+])
+
+X_missing = np.array([[1.0, np.nan], [2.0, 3.0], [np.nan, 4.0], [5.0, 6.0]])
+X_combined = combined.fit_transform(X_missing)
+print("Shape:", X_combined.shape)   # (4, 4): 2 imputed + 2 indicators
+print(X_combined)
+</code></pre>
+</section>
+<section>
+<h2>Review Questions</h2>
+<div class="quiz-card" data-answer="C">
+<p><strong>Q1.</strong> If high-income individuals are less likely to report their income, this missingness is:</p>
+<label class="quiz-option"><input type="radio" name="q1" value="A"> MCAR — missing completely at random</label>
+<label class="quiz-option"><input type="radio" name="q1" value="B"> MAR — missing at random</label>
+<label class="quiz-option"><input type="radio" name="q1" value="C"> MNAR — missing not at random</label>
+<label class="quiz-option"><input type="radio" name="q1" value="D"> Structural missingness</label>
+<button class="btn check-quiz" style="margin-top:.5rem">Check answer</button>
+</div>
+</section>
+</article><aside><nav class="toc"><h2>Contents</h2><ol id="tocList"></ol></nav></aside></div><footer class="footer"><p>&copy; <span id="year"></span> MS Machine Learning Interactive Learning Platform.</p></footer></div></main></div><script src="../../assets/js/nav-data.js"></script><script src="../../assets/js/search-index.js"></script><script src="../../assets/js/glossary-data.js"></script><script src="../../assets/js/site.js"></script><script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script><script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script></body></html>

@@ -1,0 +1,90 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Lesson 5.1: Bagging and Random Forests | MS Machine Learning</title><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link rel="stylesheet" href="../../assets/css/styles.css"><link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css"></head><body data-root="../../" data-page-id="week-05/lesson-5-1" data-title="Lesson 5.1: Bagging and Random Forests"><a class="skip-link" href="#main">Skip to main content</a><div class="progress" id="readingProgress"></div><div class="mobile-topbar"><button id="openSidebar">&#9776; Navigation</button><span style="font-family:var(--serif);font-weight:700;font-size:.95rem">MS Machine Learning</span><button class="theme-toggle">&#127769; Dark mode</button></div><div class="site-shell"><aside class="sidebar" id="sidebar"><div class="brand"><span class="brand-mark">ML</span><div><h1>Machine Learning</h1><small>Interactive Learning Platform</small></div></div><button id="closeSidebar" class="btn" style="margin:.25rem 0">&#10005; Close</button><div class="nav-search"><label for="navSearch">Search lessons</label><input id="navSearch" class="site-search-input" type="search" placeholder="Type to search&#8230;" autocomplete="off"><div class="mini-results search-results"></div></div><nav id="courseNav"></nav><section class="nav-group"><div class="nav-group-title">Your Progress</div><div id="progressList" class="progress-list small"></div></section></aside><main class="main" id="main"><div class="page-wrap"><nav class="breadcrumbs"><a href="../../index.html">Home</a><span>Week 5 · Ensemble Methods</span></nav><section class="hero"><div class="eyebrow">Week 5 · Ensemble Methods</div><h1 class="page-title">Lesson 5.1: Bagging and Random Forests</h1><div class="toolbar"><button id="bookmarkBtn" class="btn">&#9734; Bookmark</button><button id="completeBtn" class="btn">Mark complete</button><button id="quizModeBtn" class="btn">&#127919; Start quiz mode</button><button class="print-page btn">&#128424; Print</button><button class="theme-toggle btn">&#127769; Dark mode</button></div></section><div class="layout-article"><article class="article" id="articleBody"><section>
+<h2>From One Tree to a Forest</h2>
+<p>A single decision tree has high variance — small changes to training data can produce very different trees. Bootstrap aggregating (bagging) fixes this: train many trees on random subsets of the data and average their predictions. Random Forests extend bagging by also randomising which features each tree can split on, reducing correlation between trees and producing a stronger ensemble.</p>
+</section>
+<section>
+<h2>The Bootstrap and Out-of-Bag Error</h2>
+<pre><code class="language-python">import numpy as np
+from sklearn.datasets import make_classification
+
+X, y = make_classification(n_samples=1000, n_features=20, random_state=42)
+n = len(X)
+
+# Bootstrap sample: sample n examples WITH replacement
+# ~63.2% unique samples; ~36.8% are left out (out-of-bag)
+bootstrap_idx = np.random.choice(n, size=n, replace=True)
+oob_mask = np.ones(n, dtype=bool)
+oob_mask[bootstrap_idx] = False
+print(f"Unique in bootstrap: {len(np.unique(bootstrap_idx))}/1000")
+print(f"OOB samples:         {oob_mask.sum()}")  # ~368
+
+# Random Forest uses OOB samples for free internal validation
+from sklearn.ensemble import RandomForestClassifier
+rf = RandomForestClassifier(n_estimators=200, oob_score=True, random_state=42)
+rf.fit(X, y)
+print(f"OOB score (accuracy): {rf.oob_score_:.4f}")
+</code></pre>
+</section>
+<section>
+<h2>Feature Importance</h2>
+<pre><code class="language-python">from sklearn.ensemble import RandomForestClassifier
+from sklearn.datasets import load_breast_cancer
+from sklearn.model_selection import train_test_split
+import numpy as np
+
+data = load_breast_cancer()
+X, y = data.data, data.target
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+
+rf = RandomForestClassifier(n_estimators=300, max_features='sqrt',
+                            max_depth=None, min_samples_leaf=2,
+                            oob_score=True, random_state=42)
+rf.fit(X_train, y_train)
+
+print(f"Test accuracy: {rf.score(X_test, y_test):.4f}")
+print(f"OOB accuracy:  {rf.oob_score_:.4f}")
+
+# MDI (mean decrease in impurity) importance
+importances = rf.feature_importances_
+std = np.std([tree.feature_importances_ for tree in rf.estimators_], axis=0)
+idx = np.argsort(importances)[::-1]
+
+print("\nTop 5 features:")
+for i in range(5):
+    print(f"  {data.feature_names[idx[i]]}: {importances[idx[i]]:.4f} +/- {std[idx[i]]:.4f}")
+
+# Permutation importance (more reliable than MDI)
+from sklearn.inspection import permutation_importance
+perm = permutation_importance(rf, X_test, y_test, n_repeats=10, random_state=42)
+perm_idx = np.argsort(perm.importances_mean)[::-1]
+print("\nTop 5 by permutation importance:")
+for i in range(5):
+    j = perm_idx[i]
+    print(f"  {data.feature_names[j]}: {perm.importances_mean[j]:.4f} +/- {perm.importances_std[j]:.4f}")
+</code></pre>
+</section>
+<section>
+<h2>Key Hyperparameters</h2>
+<table>
+<thead><tr><th>Hyperparameter</th><th>Effect</th><th>Typical range</th></tr></thead>
+<tbody>
+<tr><td>n_estimators</td><td>Number of trees — more is better until diminishing returns</td><td>100–1000</td></tr>
+<tr><td>max_features</td><td>Features per split — lower = more diversity</td><td>'sqrt' (clf), 'log2', 0.3</td></tr>
+<tr><td>max_depth</td><td>Tree depth — None = fully grown</td><td>None or 5–20</td></tr>
+<tr><td>min_samples_leaf</td><td>Smoothing — higher = less overfitting</td><td>1–20</td></tr>
+<tr><td>bootstrap</td><td>Use bootstrap sampling</td><td>True</td></tr>
+</tbody>
+</table>
+</section>
+<section>
+<h2>Review Questions</h2>
+<div class="quiz-card" data-answer="C">
+<p><strong>Q1.</strong> What two sources of randomness does a Random Forest use to decorrelate trees?</p>
+<label class="quiz-option"><input type="radio" name="q1" value="A"> Random labels and random learning rates</label>
+<label class="quiz-option"><input type="radio" name="q1" value="B"> Random depth limits and random activation functions</label>
+<label class="quiz-option"><input type="radio" name="q1" value="C"> Bootstrap sampling of training rows and random subsets of features at each split</label>
+<label class="quiz-option"><input type="radio" name="q1" value="D"> Random initialisation and random dropout</label>
+<button class="btn check-quiz" style="margin-top:.5rem">Check answer</button>
+</div>
+</section>
+</article><aside><nav class="toc"><h2>Contents</h2><ol id="tocList"></ol></nav></aside></div><footer class="footer"><p>&copy; <span id="year"></span> MS Machine Learning Interactive Learning Platform.</p></footer></div></main></div><script src="../../assets/js/nav-data.js"></script><script src="../../assets/js/search-index.js"></script><script src="../../assets/js/glossary-data.js"></script><script src="../../assets/js/site.js"></script><script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script><script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script></body></html>
